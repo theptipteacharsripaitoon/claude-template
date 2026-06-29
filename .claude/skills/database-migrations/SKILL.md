@@ -5,7 +5,7 @@ description: Use when creating, modifying, or reviewing database migrations, sch
 
 # Database & Migrations
 
-Extends `CLAUDE.md`. When this skill loads, its rules and Done criteria apply on top of the universal baseline.
+Extends `CLAUDE.md` (especially §19 Reliability & Resource Safety). When this skill loads, its rules and Done criteria apply on top of the universal baseline.
 
 ## The cardinal rule: zero-downtime via expand → migrate → contract
 
