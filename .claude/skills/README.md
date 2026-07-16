@@ -32,6 +32,14 @@ Claude scans every skill's `description` field on each prompt (cheap — ~100 to
 | `airflow-review/` | DAG change review: parse, schedule impact, contracts |
 | `etl-review/` | End-to-end pipeline review: reconciliation, rerun safety |
 | `ssis-review/` | Dtsx review, Derived Column, Thai Unicode, Buddhist Era dates |
+| `python-layout/` | Python packaging, pyproject, __init__ discipline, entry points |
+| `python-review/` | Python review checklist, classic footguns, async traps |
+| `python-refactor/` | Behavior-preserving refactors, characterize-first workflow |
+| `python-performance/` | Profile-first optimization, chunked big-data processing |
+| `config-management/` | Config hierarchy, typed Settings, what lives where |
+| `api-review/` | API change review, breaking-change classification, schema diffs |
+| `docker-review/` | Container change review, build/scan/size evidence |
+| `fastapi-review/` | FastAPI review, async discipline, Pydantic edges |
 
 See [`INDEX.md`](INDEX.md) for the full dependency graph and per-skill build status.
 
