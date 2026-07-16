@@ -9,7 +9,7 @@ Complete guide for setting up the CLAUDE.md + skills + hooks template stack on a
 ## What this stack provides
 
 - **CLAUDE.md** — universal engineering policy (boundaries, code quality, security, testing, git, DoD, etc.)
-- **`.claude/skills/`** — 8 domain skills (docker, k8s, airflow, testing, web-security, db-migrations, api-design, observability) that load on-demand
+- **`.claude/skills/`** — domain skills (docker, k8s, airflow, testing, web-security, db-migrations, api-design, observability, repository-cleanup, and more — full list in `.claude/skills/INDEX.md`) that load on-demand
 - **`.claude/hooks/`** — 5 deterministic enforcement hooks (block destructive commands, protect sensitive files, scan secrets, check diff size, verify Definition of Done)
 - **`.claude/ENFORCEMENT.md`** — design doc explaining the 5-layer defense model
 
@@ -149,7 +149,7 @@ Verify:
 ```bash
 cd ~/Claude_Project/main_template
 
-# Should show all 8 skills + README
+# Should show all skill folders + README + INDEX.md (full list in INDEX.md)
 ls .claude/skills/
 
 # Should show 8 .sh files + README + lib.sh + install.sh
