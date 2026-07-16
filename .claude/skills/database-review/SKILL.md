@@ -33,7 +33,7 @@ Database code fails in production through unsafe defaults, oversized transaction
 - **One set-based UPDATE per table per step.** Multiple concurrent UPDATEs against the same table from parallel job branches are the classic ETL deadlock — consolidate into a single statement, or serialize the writers.
 - Procs that share tables touch them in a consistent order.
 - Keep read/write locks short; for reads of tables being loaded, prefer snapshot isolation/RCSI. `WITH (NOLOCK)` only where approximate reads are explicitly acceptable — never for financial figures.
-- `WITH (TABLOCK)` on bulk loads INTO staging tables is deliberate and fine (one lock, minimal logging) — staging only, never on shared live tables.
+- `WITH (TABLOCK)` on bulk loads INTO staging tables is deliberate and fine (one lock; minimal logging additionally requires the SIMPLE or BULK_LOGGED recovery model) — staging only, never on shared live tables.
 
 ## Publish safety — swap-table pattern (canonical here)
 

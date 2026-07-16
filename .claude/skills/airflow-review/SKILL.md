@@ -26,7 +26,7 @@ A DAG change reviewed by eyeball ships backfill storms and silent contract break
 2. **Authoring compliance** — walk the [airflow](../airflow/SKILL.md) Done criteria against the diff (canonical standards live there).
 3. **Schedule-change impact** — any change to `start_date`, `schedule`, or `catchup`: state explicitly how many runs will spawn on deploy. An unstated answer is a finding — this is how backfill storms ship.
 4. **Idempotency answer** — for every changed task: "retried twice mid-run, this leaves what state?" must have a written answer (standard: airflow skill; universal rule: `CLAUDE.md` §19).
-5. **Contract compatibility** — changed `task_id`s, XCom keys, or Datasets: list the consumers. A renamed `task_id` silently breaks downstream sensors, Datasets, and run history.
+5. **Contract compatibility** — changed `task_id`s, XCom keys, or Dataset URIs: list the consumers. A renamed `task_id` silently breaks downstream sensors, XCom pulls that reference it, and run history (Datasets are URI-keyed and survive a task rename if the outlet URI is unchanged).
 6. **Concurrency and pools** — new/changed pools, `max_active_runs`, `max_active_tis_per_dag`: check the capacity of the system being hit (DB, API), not just the Airflow side.
 7. **Alerting still wired** — `on_failure_callback` / SLA intact on critical DAGs after the change.
 8. **Placement and naming** — per [airflow-layout](../airflow-layout/SKILL.md).
