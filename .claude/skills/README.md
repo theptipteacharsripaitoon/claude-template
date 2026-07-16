@@ -26,6 +26,12 @@ Claude scans every skill's `description` field on each prompt (cheap — ~100 to
 | `dependency-review/` | Unused/missing/duplicate/obsolete dependency audits |
 | `documentation/` | README, .env.example, CONTRIBUTING proposals, cleanup final report |
 | `release-readiness/` | Release checklist: tag, changelog, verification, rollback plan |
+| `sql-layout/` | SQL file organization, deploy scripts, headers, style |
+| `database-review/` | Proc/job safety, transactions, deadlocks, swap-table publish |
+| `airflow-layout/` | DAG repo conventions at scale, naming, env separation |
+| `airflow-review/` | DAG change review: parse, schedule impact, contracts |
+| `etl-review/` | End-to-end pipeline review: reconciliation, rerun safety |
+| `ssis-review/` | Dtsx review, Derived Column, Thai Unicode, Buddhist Era dates |
 
 See [`INDEX.md`](INDEX.md) for the full dependency graph and per-skill build status.
 
