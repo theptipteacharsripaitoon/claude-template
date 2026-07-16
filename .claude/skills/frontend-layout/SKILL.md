@@ -5,7 +5,7 @@ description: Use when structuring frontend code — components, hooks, store, ut
 
 # Frontend Layout
 
-Extends `CLAUDE.md`. General structure is owned by [project-layout](../project-layout/SKILL.md) (domain-grouping canonical there); naming defaults by `CLAUDE.md` §8 (kebab-case files, PascalCase only where the framework requires — e.g. React component files). This skill owns the frontend-specific placement conventions.
+Extends `CLAUDE.md`. General structure is owned by [project-layout](../project-layout/SKILL.md) (domain-grouping canonical there); file-naming defaults by `CLAUDE.md` §8. This skill owns the frontend-specific placement conventions.
 
 ## Purpose
 

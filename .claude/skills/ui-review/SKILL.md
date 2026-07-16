@@ -9,7 +9,7 @@ Extends `CLAUDE.md` §14 — canonical there: UI changes require VISUAL confirma
 
 ## Purpose
 
-UI bugs live in the states nobody rendered during development: the empty list, the 500 error, the Thai string twice as long as the English mock. Review means seeing them, not imagining them.
+UI bugs live in the states nobody rendered during development: the empty list, the 500 error, the Thai string that wraps nothing like the English mock. Review means seeing them, not imagining them.
 
 ## When to use
 
@@ -22,7 +22,7 @@ UI bugs live in the states nobody rendered during development: the empty list, t
 ## Review checklist (visual evidence per item — screenshots or live walkthrough)
 
 1. **The state matrix, rendered:** loading / empty / error / success / partial data. A screen shown only in its success state is unreviewed. Error states show actionable messages, never stack traces (`CLAUDE.md` §12).
-2. **Real-shaped data:** long names, zero rows, thousands of rows (does it paginate/virtualize?), missing optional fields — and for Thai products: Thai text (longer lines, taller glyphs, no word spaces — check truncation and wrapping), Buddhist-calendar dates displayed as users expect.
+2. **Real-shaped data:** long names, zero rows, thousands of rows (does it paginate/virtualize?), missing optional fields — and for Thai products: Thai text (no inter-word spaces and taller stacked glyphs — line-box metrics differ from the English mock, so check truncation, wrapping, and clipping rather than assuming the mock's dimensions), Buddhist-calendar dates displayed as users expect.
 3. **Responsive breakpoints:** the change at mobile/tablet/desktop widths; horizontal scroll on mobile is a finding.
 4. **Accessibility basics:** interactive elements keyboard-reachable with visible focus; images/icons carry labels; form fields have real `<label>`s; color contrast readable; color never the only signal.
 5. **Destructive actions confirm:** delete/submit/pay flows show consequence + confirmation (mirrors `CLAUDE.md` §2 philosophy in the product).

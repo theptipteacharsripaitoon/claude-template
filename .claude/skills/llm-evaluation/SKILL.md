@@ -23,7 +23,7 @@ Extends `CLAUDE.md`. Owns HOW LLM behavior is measured and gated. What evals are
 
 - **Golden set first.** A versioned set of real inputs with expected outputs (or grading criteria) — including the hard cases that broke production before (for Thai pipelines: BE dates, invisible characters, mixed languages). Synthetic-only sets grade a product nobody uses.
 - **Graded dimensions, not one score:** correctness, format validity (does it parse against the schema — canonical: `CLAUDE.md` §7), completeness, safety. A change can win one and lose another; a single number hides it.
-- **Format validity is binary and automated.** Parse every output; a "mostly valid JSON" rate below 100% is a prompt bug, not an acceptable variance.
+- **Format validity is binary and automated.** Parse every output; a "mostly valid JSON" rate below 100% is a defect to fix before shipping — usually via constrained/structured decoding or a parse-repair step, occasionally the prompt — never acceptable variance.
 - **LLM-as-judge is calibrated, not trusted.** The judge prompt is versioned like any prompt; spot-check judge verdicts against human labels before relying on it; never let a model judge its own outputs with the same prompt under test.
 - **Control the randomness.** Deterministic settings where the task allows; where it doesn't, multiple samples per input and report the distribution — a one-sample eval of a stochastic system is a coin flip (`CLAUDE.md` §10 determinism spirit).
 - **Regressions are BLOCKING.** New prompt/model must meet or beat the current one on the golden set before deploy — same posture as [verification](../verification/SKILL.md) for code. A knowingly-shipped regression needs the user's explicit acceptance, stated in the PR.
