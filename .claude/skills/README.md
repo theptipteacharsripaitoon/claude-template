@@ -18,6 +18,16 @@ Claude scans every skill's `description` field on each prompt (cheap — ~100 to
 | `api-design/` | Public APIs, REST, GraphQL, versioning, deprecation |
 | `web-security/` | Auth, sessions, cookies, CSRF, SSRF, file uploads, headers |
 | `observability/` | Metrics, traces, logs, health checks, SLO alerts |
+| `repository-cleanup/` | Repo audits, cleanup, decluttering, safe restructuring (orchestrator) |
+| `verification/` | Post-commit verification commands, blocking failures, rollback protocol |
+| `git-hygiene/` | Work branches, git mv, move-first-rename-later, cleanup commit sequence, .gitignore |
+| `security-review/` | Repo secret scans, leaked credentials, rotation, history cleanup |
+| `project-layout/` | Folder structure proposals, root cleanup, project-type layouts |
+| `dependency-review/` | Unused/missing/duplicate/obsolete dependency audits |
+| `documentation/` | README, .env.example, CONTRIBUTING proposals, cleanup final report |
+| `release-readiness/` | Release checklist: tag, changelog, verification, rollback plan |
+
+See [`INDEX.md`](INDEX.md) for the full dependency graph and per-skill build status.
 
 ## Maintaining
 
