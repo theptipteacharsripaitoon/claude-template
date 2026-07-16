@@ -24,7 +24,7 @@ STOP and wait for approval of this table before touching any code.
 - Never create import cycles. If extraction would create one, skip and report.
 - Secrets discovered during extraction go to `.env` (with `.env.example` updated — format: [documentation](../../documentation/SKILL.md)), NEVER into config files. Never print their values (canonical: [security-review](../../security-review/SKILL.md)).
 - Do not change types, formats, or evaluation timing of any value.
-- Target config locations follow the repository's existing convention. (A dedicated `config-management` skill is planned; until it exists, decide per repo convention and record the decision in `CLEANUP_PLAN.md`.)
+- Target config locations follow [config-management](../../config-management/SKILL.md) (precedence hierarchy, typed loader); record each location decision in `CLEANUP_PLAN.md`.
 
 ## Execution rules
 
