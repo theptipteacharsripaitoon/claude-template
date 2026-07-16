@@ -26,7 +26,7 @@ Config scattered across hardcoded constants, ad-hoc `os.environ` reads, and per-
   - *Code defaults* — safe, environment-independent values only.
   - *Config files* (`config/` dir; e.g. `base.yaml` + `prod.yaml` overlays) — non-secret, environment-shaped values (batch sizes, feature flags, paths).
   - *Env vars / `.env`* — deployment-specific values and ALL secrets (canonical: `CLAUDE.md` §7; never in config files, never committed).
-- **Typed loader at the boundary** — Python: Pydantic `BaseSettings` (env prefix, `.env` support, `SecretStr` for secrets); one `Settings` object constructed at startup, passed explicitly — no `os.environ` reads scattered through business logic (canonical: §7).
+- **Typed loader at the boundary** — Python: Pydantic `BaseSettings` (the `pydantic-settings` package in Pydantic v2; env prefix, `.env` support, `SecretStr` for secrets); one `Settings` object constructed at startup, passed explicitly — no `os.environ` reads scattered through business logic (canonical: §7).
 - **No environment conditionals in code** — `if env == "prod"` logic is config expressed as code; the overlay file carries the difference instead (same principle airflow-layout applies to DAGs).
 - **Scheduler-run scripts load config by explicit absolute path,** never CWD-relative — SQL Agent, Task Scheduler, and cron start processes with surprising working directories. (Extraction INTO shared config for such scripts has its own safety rule — canonical: repository-cleanup's config-consolidation module.)
 - **Changing a config value must not require a code change** in the same commit — if it does, it wasn't config.

@@ -57,7 +57,7 @@ sql-layout         → database-migrations
 airflow-review     → airflow, airflow-layout, verification
 airflow-layout     → airflow, project-layout
 fastapi-review     → python-review, api-review, config-management, docker-review,
-                     web-security, observability, verification
+                     web-security, security-review, observability, verification
 python-review      → python-layout, dependency-review, verification, testing
 python-refactor    → repository-cleanup, testing, verification
 python-performance → repository-cleanup, database-review, verification, testing

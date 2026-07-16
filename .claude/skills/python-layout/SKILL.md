@@ -26,7 +26,7 @@ Python projects drift into "a folder of scripts that import each other by accide
 - **Package directory = import name.** `mis_lib/` imports as `mis_lib`. Match `[project] name` to it (dashes in the dist name map to underscores in the import).
 - **Respect the existing layout style** — keep flat layout if the project is flat; keep `src/` if it already uses `src/` (never force either — canonical: [project-layout](../project-layout/SKILL.md)).
 - **`__init__.py` is a table of contents, not a program:** explicit re-exports (`__all__`) only; no I/O, no config loading, no heavy imports at package import time.
-- **One module = one concern,** grouped by domain, not by type (`billing.py`, not `helpers2.py`). Unclear names (`utils.py` catch-alls, `new.py`, `test2.py`) are findings — naming review: [project-layout](../project-layout/SKILL.md).
+- **One module = one concern,** grouped by domain, not by type (`billing.py`, not `helpers2.py`; domain-grouping canonical: [project-layout](../project-layout/SKILL.md)). Unclear names (`utils.py` catch-alls, `new.py`, `test2.py`) are findings — naming review: project-layout.
 - **Entry points over loose scripts:** runnable things are `[project.scripts]` console entries or `python -m package.module` — a script that is also imported by other code is two things and should be split.
 - **Shared code is a real package** (installable or on an explicit `PYTHONPATH`), never reached by `sys.path.append("../somewhere")`.
 - **Environment junk stays ignored:** `.venv/`, `__pycache__/`, `.pytest_cache/`, build artifacts — ignore-list mechanics: git-hygiene (add `.venv/` there if missing).

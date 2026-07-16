@@ -38,6 +38,7 @@ Contract diff → [api-review](../api-review/SKILL.md) checklist. Code diff → 
 
 - [python-review](../python-review/SKILL.md) · [api-review](../api-review/SKILL.md) · [config-management](../config-management/SKILL.md) · [docker-review](../docker-review/SKILL.md)
 - [web-security](../web-security/SKILL.md) — auth/sessions/CORS implementation
+- [security-review](../security-review/SKILL.md) — secrets discovered in service config, env files, or images
 - [observability](../observability/SKILL.md) — health checks, metrics
 - [verification](../verification/SKILL.md) — verifying the changed paths
 - `CLAUDE.md` §7, §12, §19
