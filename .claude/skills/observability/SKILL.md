@@ -42,7 +42,7 @@ A dashboard that shows all four at a glance is the foundation. Anything else is 
 
 ### What to instrument
 - **Every external call** (DB, cache, queue, third-party API): duration histogram + outcome counter.
-- **Every endpoint:** request counter, duration histogram, in-flight gauge.
+- **Every production endpoint on a request path:** request counter, duration histogram; add an in-flight gauge where saturation matters. Internal tools and dev spikes are exempt until they take production traffic.
 - **Every queue:** depth gauge, enqueue/dequeue counters, age histogram.
 - **Every background job:** runs counter, duration histogram, outcome counter.
 - **Resource pools** (DB connections, thread pools): in-use, idle, waiters.
@@ -105,7 +105,7 @@ Three distinct checks, three distinct meanings:
 - **Readiness:** is the process ready to serve traffic? Reflects dependency status (DB connection, cache warmed, config loaded).
 - **Startup** (Kubernetes): for slow-starting apps that need a long grace period.
 
-A health check that always returns 200 is worse than no health check — it gives false confidence. The readiness check **must** verify it can talk to its critical dependencies.
+A health check that always returns 200 is worse than no health check — it gives false confidence. The readiness check **must** verify it can talk to its critical dependencies. (Canonical rule — the docker and kubernetes skills point here.)
 
 ## Alerts
 
@@ -150,7 +150,7 @@ Every panel answers a question someone asks during an incident. If a panel never
 
 ## Done criteria (in addition to CLAUDE.md §14)
 
-- [ ] New endpoint/operation has request counter, duration histogram, in-flight gauge.
+- [ ] New production endpoint/operation has request counter and duration histogram (in-flight gauge where saturation matters).
 - [ ] External call instrumented with duration + outcome.
 - [ ] Errors increment a counter with labels (type, cause), not just logged.
 - [ ] Trace context propagated end-to-end through the change.

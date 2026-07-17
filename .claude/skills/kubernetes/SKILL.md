@@ -7,12 +7,14 @@ description: Use when creating, modifying, or reviewing Kubernetes manifests (De
 
 Extends `CLAUDE.md`. When this skill loads, its rules and Done criteria apply on top of the universal baseline.
 
-## Workload manifests (every Deployment/StatefulSet/Job)
+## Workload manifests (production Deployments/StatefulSets/Jobs)
 
-**Mandatory fields:**
+Dev and ephemeral environments may relax the resilience items (PDB, topology spread, anti-affinity) and NetworkPolicy — production manifests must never inherit that relaxation.
+
+**Mandatory fields (production):**
 - **Resource requests AND limits** for CPU and memory. Missing limits = noisy-neighbor risk; missing requests = unschedulable on full nodes.
 - **All three probes** for slow-starting services: `livenessProbe`, `readinessProbe`, `startupProbe`.
-  - `readinessProbe` must reflect dependency readiness (DB connection, cache warm), not just process up.
+  - `readinessProbe` must reflect dependency readiness (DB connection, cache warm), not just process up (canonical: observability skill).
   - `livenessProbe` triggers restart — keep it lightweight; never share with readiness.
   - `startupProbe` for apps with >10s init.
 - **Image pinned by digest** in production manifests (`image: registry/app@sha256:...`), not by tag.
@@ -38,7 +40,7 @@ containers:
 ```
 
 **Resilience:**
-- **PodDisruptionBudget** for any workload with replicas >1 (`minAvailable` or `maxUnavailable`).
+- **PodDisruptionBudget** for any production workload with replicas >1 (`minAvailable` or `maxUnavailable`).
 - **HorizontalPodAutoscaler** with sensible min/max and stabilization windows; consider `behavior` block for scale-down dampening.
 - **TopologySpreadConstraints** across zones (`topology.kubernetes.io/zone`) for HA workloads.
 - **PriorityClass** for critical workloads; system-cluster-critical never for app workloads.
@@ -120,9 +122,9 @@ containers:
 - [ ] `securityContext` enforces non-root, read-only root FS, dropped capabilities.
 - [ ] Dedicated `ServiceAccount`, not `default`.
 - [ ] Image pinned by digest in production manifests.
-- [ ] PodDisruptionBudget present for replicated workloads.
+- [ ] PodDisruptionBudget present for replicated production workloads.
 - [ ] No `privileged`, `hostNetwork`, `hostPath` (or explicit justification).
-- [ ] NetworkPolicy in place for the workload's namespace.
+- [ ] NetworkPolicy in place for the workload's namespace (production; dev relaxation documented).
 - [ ] Manifests pass `kubeconform`, `kube-linter`, and policy checks.
 - [ ] No secrets in plain `Secret` manifests committed to git.
 - [ ] Change deploys via GitOps, not `kubectl apply` from a laptop.
