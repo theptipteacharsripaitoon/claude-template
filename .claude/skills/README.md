@@ -40,6 +40,13 @@ Claude scans every skill's `description` field on each prompt (cheap — ~100 to
 | `api-review/` | API change review, breaking-change classification, schema diffs |
 | `docker-review/` | Container change review, build/scan/size evidence |
 | `fastapi-review/` | FastAPI review, async discipline, Pydantic edges |
+| `agent-design/` | LLM agent architecture, tool contracts, guardrails |
+| `prompt-engineering/` | Prompt structure, schema outputs, injection resistance |
+| `llm-evaluation/` | Golden sets, LLM-as-judge calibration, regression gates |
+| `ci-review/` | CI/CD change review, pinned actions, least-privilege tokens |
+| `frontend-layout/` | Frontend structure, feature folders, colocation |
+| `ui-review/` | UI change review, state matrix, a11y, Thai text |
+| `design-system/` | Shared components, tokens, deprecation lifecycle |
 
 See [`INDEX.md`](INDEX.md) for the full dependency graph and per-skill build status.
 
