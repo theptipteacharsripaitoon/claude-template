@@ -29,6 +29,7 @@ Guarantee that every logical commit leaves the repository functional: run only t
 | Stack present | Commands |
 |---|---|
 | Python | `python -m compileall`, `pytest`, `ruff check`, `mypy` |
+| Node / frontend | `npm ci`, `npm run build`, `npm test` (script names per `package.json`) |
 | Docker / Compose | `docker compose config`, `docker build` |
 | Airflow | `airflow dags list` |
 
