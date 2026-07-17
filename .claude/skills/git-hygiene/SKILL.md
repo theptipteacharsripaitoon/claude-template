@@ -44,7 +44,7 @@ One logical change per commit, in this order:
 
 Generated artifacts are never tracked. Ignore-target list (this is also the "repository noise" audit target list):
 
-`__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.cache/`, `coverage/`, `htmlcov/`, `dist/`, `build/`, `*.egg-info/`, `node_modules/`, `logs/`, `tmp/`, `temp/`, `exports/`, `generated/`, debug outputs, backup files (`*.bak`, `*~`), OS junk (`.DS_Store`, `Thumbs.db`).
+`__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.cache/`, `coverage/`, `htmlcov/`, `dist/`, `build/`, `*.egg-info/`, `node_modules/`, `.venv/`, `venv/`, `logs/`, `tmp/`, `temp/`, `exports/`, `generated/`, debug outputs, backup files (`*.bak`, `*~`), OS junk (`.DS_Store`, `Thumbs.db`).
 
 - During an audit, the `.gitignore` is a PROPOSAL; it is written to the repo only in the hygiene commit after approval.
 - `.env*` and other secret files must be ignored before any commit lands (canonical: `CLAUDE.md` §7).
