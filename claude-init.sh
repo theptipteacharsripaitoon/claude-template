@@ -3,9 +3,10 @@
 # Usage:
 #   claude-init <project-name>            # creates $HOME/projects/<name>
 #   CLAUDE_PROJECTS_DIR=/foo claude-init <name>   # custom destination root
+#   CLAUDE_TEMPLATE_DIR=/bar claude-init <name>   # template cloned elsewhere
 
 claude-init() {
-  local TEMPLATE="$HOME/Claude_Project/main_template"
+  local TEMPLATE="${CLAUDE_TEMPLATE_DIR:-$HOME/Claude_Project/main_template}"
   local DEST_ROOT="${CLAUDE_PROJECTS_DIR:-$HOME/projects}"
   local name="${1:-}"
 

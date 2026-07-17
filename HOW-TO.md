@@ -202,61 +202,12 @@ If you see ✗ anywhere, jump to **Troubleshooting** below.
 
 This creates a shell function that bootstraps a new project from the template in one command.
 
-### Create the init script
+### The init script ships with the template
 
-```bash
-cat > ~/Claude_Project/main_template/claude-init.sh <<'SCRIPT_EOF'
-#!/usr/bin/env bash
-# Claude project bootstrap — sources from main_template
-# Usage: claude-init <project-name>
-
-claude-init() {
-  local TEMPLATE="$HOME/Claude_Project/main_template"
-  local DEST_ROOT="${CLAUDE_PROJECTS_DIR:-$HOME/projects}"
-  local name="${1:-}"
-
-  if [[ -z "$name" ]]; then
-    echo "Usage: claude-init <project-name>"
-    echo "Creates: $DEST_ROOT/<project-name> from $TEMPLATE"
-    echo "Override destination root: CLAUDE_PROJECTS_DIR=/some/path claude-init <name>"
-    return 1
-  fi
-
-  if [[ ! -d "$TEMPLATE/.claude" ]]; then
-    echo "✗ Template not found at $TEMPLATE"
-    echo "  Set up the template first (see HOW-TO.md Phase 2)."
-    return 1
-  fi
-
-  local dest="$DEST_ROOT/$name"
-  if [[ -e "$dest" ]]; then
-    echo "✗ $dest already exists. Remove or pick a different name."
-    return 1
-  fi
-
-  mkdir -p "$dest" && cd "$dest" || return 1
-
-  cp "$TEMPLATE/CLAUDE.md" ./
-  cp -r "$TEMPLATE/.claude" ./
-
-  if ! bash .claude/hooks/install.sh; then
-    echo "✗ Hook install failed. Project at $dest may be incomplete."
-    return 1
-  fi
-
-  echo ""
-  echo "✅ Project '$name' bootstrapped at $dest"
-  echo ""
-  echo "Next steps:"
-  echo "  1. Fill 'Project Configuration' section in CLAUDE.md"
-  echo "     \$EDITOR CLAUDE.md   # or:  code ."
-  echo "  2. git init && git add -A && git commit -m 'chore: bootstrap'"
-  echo "  3. Restart Claude Code in this directory"
-  echo ""
-  echo "Currently at: $(pwd)"
-}
-SCRIPT_EOF
-```
+`claude-init.sh` is already at the repository root — the Phase 2 clone put it at
+`~/Claude_Project/main_template/claude-init.sh`. There is nothing to create;
+you only wire it into your shell below. (To bootstrap from a template kept
+elsewhere, set `CLAUDE_TEMPLATE_DIR=/path/to/template`.)
 
 ### Wire it into your shell
 
@@ -272,6 +223,9 @@ source ~/.bashrc
 # Verify
 type claude-init
 ```
+
+> **macOS note:** the default shell is zsh — append the `source` line to
+> `~/.zshrc` instead of `~/.bashrc` (same command, different file).
 
 Should show: `claude-init is a function`.
 
@@ -350,7 +304,7 @@ cd ~/projects/my-new-app
 git init
 git add -A
 git commit -m "chore: bootstrap claude template"
-claude code
+claude
 ```
 
 ---
@@ -420,10 +374,10 @@ These can be set in your shell to tune behavior:
 Example:
 ```bash
 # Bypass destructive command block for this Claude session only
-CLAUDE_HOOK_OVERRIDE=block-destructive claude code
+CLAUDE_HOOK_OVERRIDE=block-destructive claude
 
 # Strict mode: Stop hook fully runs verification
-CLAUDE_VERIFY_BLOCK=1 claude code
+CLAUDE_VERIFY_BLOCK=1 claude
 ```
 
 ---
@@ -475,7 +429,7 @@ chmod +x .claude/hooks/*.sh
 Two options:
 - **One-time bypass** (recommended for genuine cases):
   ```bash
-  CLAUDE_HOOK_OVERRIDE=<hook-name> claude code
+  CLAUDE_HOOK_OVERRIDE=<hook-name> claude
   # The override is logged to .claude/logs/hooks.log
   ```
 - **Permanent fix:** Edit the pattern in `.claude/hooks/<hook>.sh` and remove or refine the offending pattern.
@@ -508,7 +462,7 @@ claude-init <name>
 ```
 
 ### CLAUDE.md not loading in Claude Code
-- File must be at the **root** of the directory where you run `claude code`.
+- File must be at the **root** of the directory where you run `claude`.
 - Restart Claude Code after creating/changing CLAUDE.md.
 - Verify: in Claude Code, ask "what's in your system prompt?" — it should reference the policy.
 
@@ -579,13 +533,13 @@ Per new project:
   cd ~/projects/<name>
   $EDITOR CLAUDE.md           # fill Project Configuration
   git init && git add -A && git commit -m 'chore: bootstrap'
-  claude code
+  claude
 
 One-time bypass:
-  CLAUDE_HOOK_OVERRIDE=<hook-name> claude code
+  CLAUDE_HOOK_OVERRIDE=<hook-name> claude
 
 Strict mode:
-  CLAUDE_VERIFY_BLOCK=1 claude code
+  CLAUDE_VERIFY_BLOCK=1 claude
 
 Update template across machines:
   cd ~/Claude_Project/main_template
