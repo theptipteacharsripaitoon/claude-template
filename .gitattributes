@@ -1,0 +1,9 @@
+# Normalize line endings. Shell scripts MUST be LF — CRLF breaks bash on
+# WSL/Linux clones (the most common Windows install failure for this repo).
+* text=auto
+*.sh text eol=lf
+*.md text
+*.json text
+*.yaml text
+*.yml text
+*.py text

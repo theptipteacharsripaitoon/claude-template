@@ -1,0 +1,16 @@
+# Machine-local Claude Code state — never commit.
+.claude/settings.local.json
+.claude/logs/
+.claude/CLEANUP_PLAN.md
+.claude/CLEANUP_EXECUTION.md
+
+# Secrets — never commit (templates like .env.example ARE committed).
+.env
+.env.*
+!.env.example
+
+# Common generated noise for bootstrapped projects.
+__pycache__/
+*.pyc
+node_modules/
+*.log
