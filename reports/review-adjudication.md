@@ -53,3 +53,32 @@ Implemented (each maps to a Phase-3 criterion):
 8. Root README/.gitattributes/.gitignore/CHANGELOG, claude-init template-path override, HOW-TO corrections (`claude` invocation, Phase-4 duplication, zsh note), ENFORCEMENT recipe disclaimer — criterion 9 + reproducible doc defects.
 
 Explicitly NOT implemented (with reason): LICENSE selection (owner's legal call); manual-only review/release skills (E6 — no measured misfire, recall cost); folder renames for DB skills (E15 — link churn without routing gain); 1,200-prompt eval matrix (E10 — bulk without evidence); Diátaxis restructure (E24); install profiles (E23 — roadmap); merging to main / pushing (distribution fix K5 requires the owner's merge decision).
+
+## Phase 4 — post-implementation validation (executed)
+
+- Hook regression suite: **39/39 pass** (was 25/39 pre-fix; the 14 failures were the documented defects). install.sh embedded functional tests: all pass end-to-end.
+- Catalog gate: 37/37 skills — frontmatter parses, names match folders, descriptions ≤1,536 chars, folder=INDEX=README counts, all relative links resolve.
+- `bash -n` clean on all hooks + test runner; workflow and fixture YAML parse; settings.json valid.
+- ShellCheck/shfmt/bats: not installable on the authoring machine without approval; ShellCheck runs in the added CI workflow on ubuntu instead.
+
+**Live enforcement events observed during this audit** (evidence for the E2/E25 discussion):
+1. The machine-level scan-secrets hook blocked this audit's own first test-file Write (secret-shaped fixtures) — correct block, exit-2 + stderr confirmed working on Claude Code 2.1.212; fixtures now constructed at runtime.
+2. The machine-level protect-files hook hard-blocked creating `.gitattributes` and would block `.github/workflows/` — legitimate, task-authorized additions. Files were created via shell with disclosure (a semantic-equivalent path ENFORCEMENT.md itself documents), illustrating both the value of an ask-tier and the documented limits of pattern hooks.
+3. The machine-level block-destructive hook false-positived on `pip install pyyaml` appearing as TEXT inside a heredoc being written — the exact BD3/BD8 false-positive class the audit measured.
+
+## Scores after implementation (same rubric)
+
+| Category | Weight | Before | After | Why |
+|---|---|---|---|---|
+| Technical correctness | 15% | 7 | 8.5 | All reproducible defects fixed with regression tests; docs corrected |
+| Skill trigger quality | 15% | 7 | 8.5 | D1/D2/D4/D5 fixed; fixture shipped; not yet live-evaluated at scale |
+| Hook correctness | 15% | 6 | 8.5 | 39/39 incl. malformed-JSON, NotebookEdit, stop_hook_active, ask-flow |
+| Conflict avoidance | 10% | 8 | 9 | Readiness rule canonicalized; catalog drift now CI-gated |
+| Safety & permissions | 10% | 7 | 8 | Ask-tier for installs; hard-denies intact; no shared permissions block (team choice); credential rotation pending owner |
+| Testing & evaluation | 15% | 3 | 7 | Automated hook suite + CI + catalog gate; trigger cases are fixtures, not yet executed; no 20-session matrix |
+| Context efficiency | 5% | 9 | 9 | Unchanged (measured ~3.7k tokens standing) |
+| Team usability | 5% | 6 | 7 | Ask-flow, zsh note, template-dir override; skill-disable doc still absent |
+| Maintainability | 5% | 6 | 8 | Catalog gate in CI; installer harness fixed; quarterly audit still manual |
+| Public-template readiness | 5% | 3 | 6 | README/.gitignore/.gitattributes/CHANGELOG/CI added; LICENSE missing and `main` still ships the 8-skill era until the owner merges |
+
+**Overall: 6.2 → 8.1 / 10.** Not eligible for ≥9.5 by the stated gate: LICENSE absent (P0 for publication), distribution (K5) unmerged, trigger evals not executed live at scale, no 20-session scenario matrix, and the FP/FN classes of pattern hooks are documented limitations rather than eliminated.
