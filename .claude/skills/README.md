@@ -26,8 +26,8 @@ Claude scans every skill's `description` field on each prompt (cheap — ~100 to
 | `dependency-review/` | Unused/missing/duplicate/obsolete dependency audits |
 | `documentation/` | README, .env.example, CONTRIBUTING proposals, cleanup final report |
 | `release-readiness/` | Release checklist: tag, changelog, verification, rollback plan |
-| `sql-layout/` | SQL file organization, deploy scripts, headers, style |
-| `database-review/` | Proc/job safety, transactions, deadlocks, swap-table publish |
+| `sql-layout/` | SQL file organization (T-SQL flavored), deploy scripts, headers |
+| `database-review/` | SQL Server/T-SQL proc review, transactions, deadlocks, swap-table |
 | `airflow-layout/` | DAG repo conventions at scale, naming, env separation |
 | `airflow-review/` | DAG change review: parse, schedule impact, contracts |
 | `etl-review/` | End-to-end pipeline review: reconciliation, rerun safety |

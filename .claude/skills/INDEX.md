@@ -15,7 +15,7 @@ One line per skill, the dependency graph, and build status. Details live in each
 | [ci-review](ci-review/SKILL.md) | CI/CD change review: SHA-pinned actions, least-privilege tokens, blocking gates |
 | [config-management](config-management/SKILL.md) | Config precedence hierarchy, typed Settings loading, what lives where |
 | [database-migrations](database-migrations/SKILL.md) | Schema changes, expand-migrate-contract, zero-downtime, lock-safe DDL |
-| [database-review](database-review/SKILL.md) | Proc/job safety, transaction scope, deadlock avoidance, swap-table publish |
+| [database-review](database-review/SKILL.md) | SQL Server/T-SQL proc and job review: transactions, deadlocks, swap-table publish |
 | [dependency-review](dependency-review/SKILL.md) | Unused/missing/duplicate/obsolete dependency audit with evidence |
 | [design-system](design-system/SKILL.md) | Shared-component governance: reuse-before-create, tokens, deprecation |
 | [docker](docker/SKILL.md) | Dockerfile/compose, multi-stage builds, image security and size |
@@ -37,7 +37,7 @@ One line per skill, the dependency graph, and build status. Details live in each
 | [release-readiness](release-readiness/SKILL.md) | Release checklist: verification, secrets, docs, changelog, tag, rollback plan |
 | [repository-cleanup](repository-cleanup/SKILL.md) | Cleanup orchestrator: audit → approval → execute → verify; evidence, archive-over-delete |
 | [security-review](security-review/SKILL.md) | Repo secret scan, never-print-values, rotation, history cleanup |
-| [sql-layout](sql-layout/SKILL.md) | SQL file organization, one-object-per-file, deploy scripts, style |
+| [sql-layout](sql-layout/SKILL.md) | SQL file organization (T-SQL flavored): one-object-per-file, deploy scripts |
 | [ssis-review](ssis-review/SKILL.md) | Dtsx review, Derived Column, Thai Unicode cleanup, Buddhist Era dates |
 | [testing](testing/SKILL.md) | Test pyramid, property-based, mutation, contract testing, flakiness |
 | [ui-review](ui-review/SKILL.md) | UI change review: state matrix, visual evidence, a11y, Thai text rendering |

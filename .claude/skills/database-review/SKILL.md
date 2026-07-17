@@ -1,11 +1,11 @@
 ---
 name: database-review
-description: Use when reviewing database code before it ships — stored procedures, queries, DML jobs, T-SQL batches — for correctness, safety, and performance. Trigger on phrases like "review this proc", "is this query safe", "deadlock problem", "query is slow", "review the SQL job", "check this UPDATE". Covers proc safety settings, transaction scope, batched DML, deadlock avoidance, swap-table publish, and execution-plan review. Do NOT use for schema changes and migrations (database-migrations) or SQL file organization (sql-layout).
+description: Use when reviewing SQL Server / T-SQL database code before it ships — stored procedures, queries, DML jobs, T-SQL batches — for correctness, safety, and performance. Trigger on phrases like "review this proc", "is this query safe", "deadlock problem", "query is slow", "review the SQL job", "check this UPDATE". Covers proc safety settings, transaction scope, batched DML, deadlock avoidance, swap-table publish, and execution-plan review. Do NOT use for schema changes and migrations (database-migrations), SQL file organization (sql-layout), or other engines as-is — the mechanics here are T-SQL-specific.
 ---
 
-# Database Review
+# Database Review (SQL Server / T-SQL)
 
-Extends `CLAUDE.md` (especially §12, §14, §19). Owns the review standard for database CODE — procs, queries, DML jobs. Schema/DDL changes are owned by [database-migrations](../database-migrations/SKILL.md); file organization and style by [sql-layout](../sql-layout/SKILL.md).
+Extends `CLAUDE.md` (especially §12, §14, §19). Owns the review standard for database CODE — procs, queries, DML jobs. The mechanics below are SQL Server-specific; on another engine, keep the review structure and swap the engine mechanics. Schema/DDL changes are owned by [database-migrations](../database-migrations/SKILL.md); file organization and style by [sql-layout](../sql-layout/SKILL.md).
 
 ## Purpose
 
