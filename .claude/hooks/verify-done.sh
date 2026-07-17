@@ -8,6 +8,16 @@
 
 source "$(dirname "$0")/lib.sh"
 
+# Re-entry guard: when Claude already continued once because of this hook,
+# the Stop input carries stop_hook_active=true. Never nag (or block) twice —
+# without this guard, blocking mode can loop a session forever.
+STOP_INPUT=$(cat 2>/dev/null || true)
+if command -v jq >/dev/null 2>&1 && [[ -n "$STOP_INPUT" ]]; then
+  if [[ "$(echo "$STOP_INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || true)" == "true" ]]; then
+    exit 0
+  fi
+fi
+
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 
 # Detect uncommitted code changes that look "real" (not just docs/whitespace).
@@ -15,7 +25,9 @@ if ! command -v git >/dev/null 2>&1 || [[ ! -d .git ]]; then
   exit 0  # No git, nothing to check.
 fi
 
-CHANGED=$(git status --porcelain 2>/dev/null | grep -E '\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|sql|sh)$' | wc -l | tr -d ' ')
+# grep -c exits 1 when nothing matches; without `|| true`, lib.sh's
+# `set -euo pipefail` kills the hook with exit 1 on every CLEAN stop.
+CHANGED=$(git status --porcelain 2>/dev/null | grep -cE '\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|sql|sh)$' || true)
 
 if [[ "$CHANGED" == "0" ]]; then
   exit 0  # No code changes; stopping is fine.

@@ -93,9 +93,12 @@ read_input() {
   cat
 }
 
-# Extract a JSON field; print empty string if missing.
+# Extract a JSON field; print empty string if missing OR if the input is not
+# valid JSON. Guardrail hooks must fail OPEN on malformed input (same policy
+# as require_jq) — without the guard, jq's parse error aborts the sourcing
+# hook via set -euo pipefail with a confusing non-0/non-2 exit code.
 json_get() {
   local input="$1"
   local field="$2"
-  echo "$input" | jq -r "$field // empty"
+  echo "$input" | jq -r "$field // empty" 2>/dev/null || true
 }
