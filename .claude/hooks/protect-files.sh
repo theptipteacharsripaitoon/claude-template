@@ -8,7 +8,8 @@ source "$(dirname "$0")/lib.sh"
 require_jq
 
 INPUT=$(read_input)
-FILE=$(json_get "$INPUT" '.tool_input.file_path')
+# NotebookEdit sends notebook_path instead of file_path.
+FILE=$(json_get "$INPUT" '.tool_input.file_path // .tool_input.notebook_path')
 
 if [[ -z "$FILE" ]]; then
   exit 0
