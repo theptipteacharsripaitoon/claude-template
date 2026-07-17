@@ -134,14 +134,8 @@ After getting the template, you should have:
     │   └── .gitignore
     └── skills/
         ├── README.md
-        ├── airflow/SKILL.md
-        ├── api-design/SKILL.md
-        ├── database-migrations/SKILL.md
-        ├── docker/SKILL.md
-        ├── kubernetes/SKILL.md
-        ├── observability/SKILL.md
-        ├── testing/SKILL.md
-        └── web-security/SKILL.md
+        ├── INDEX.md
+        └── <one folder per skill, each with SKILL.md — full list in INDEX.md>
 ```
 
 Verify:
@@ -152,7 +146,7 @@ cd ~/Claude_Project/main_template
 # Should show all skill folders + README + INDEX.md (full list in INDEX.md)
 ls .claude/skills/
 
-# Should show 8 .sh files + README + lib.sh + install.sh
+# Should show README.md + 7 .sh files (5 enforcement hooks + lib.sh + install.sh)
 ls .claude/hooks/
 
 # Each skill folder must have SKILL.md

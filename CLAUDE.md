@@ -339,7 +339,7 @@ If any item is false, the task is not done. Say so explicitly. Do not declare su
 ## 18. What Goes Where
 
 - **Universal rules** (this file): priority, operating principles, AI boundaries, anti-hallucination, planning, code quality, secrets, file org, scope, basic testing, git, errors, risk, verification, cost-awareness, reliability, pre-task checklist.
-- **Domain-specific workflows** (`.claude/skills/<name>/SKILL.md`): docker, kubernetes, airflow, web security, advanced testing, db migrations, api design, observability.
+- **Domain-specific workflows** (`.claude/skills/<name>/SKILL.md`): cleanup/verification/git, data engineering (SQL, SSIS, Airflow), Python/backend, containers/k8s, web security, AI/LLM, CI, and frontend — full catalog with the dependency graph in `.claude/skills/INDEX.md`.
 - **Long reference material**: supporting files inside the relevant skill folder.
 - **Deterministic enforcement** (`.claude/ENFORCEMENT.md` and `.claude/settings.json`): hooks and CI gates that enforce non-negotiable rules at the system level. Prose in this file is ~70–90% effective; hooks are 100% deterministic **for the specific patterns they cover** — they do not catch semantic equivalents (e.g., `python -c "shutil.rmtree(...)"` is not blocked by an `rm -rf` hook). For high-cost rules, configure a hook AND keep the prose; for adversarial threats, layer with pre-commit, CI, and policy-as-code.
 
