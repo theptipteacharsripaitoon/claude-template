@@ -1,0 +1,82 @@
+# Skill-trigger evaluation fixture.
+#
+# These cases define EXPECTED routing for the clusters where misrouting is
+# most plausible (measured in reports/claude-independent-audit.md). They are
+# not auto-executable — evaluating them requires live Claude Code sessions in
+# this repo (start a session, send the prompt, record which skills loaded).
+# Record results next to each run's date when evaluated.
+#
+# Format per case: prompt, must_load (skills that should activate),
+# must_not_load (skills that must stay out).
+
+layout_cluster:
+  - prompt: "Organize this project - the root is a mess"
+    must_load: [project-layout]
+    must_not_load: [python-layout, sql-layout, airflow-layout, frontend-layout, repository-cleanup]
+  - prompt: "Structure this Python project so it is importable"
+    must_load: [python-layout]
+    must_not_load: [project-layout]
+  - prompt: "Organize the dags folder by team"
+    must_load: [airflow-layout]
+    must_not_load: [airflow, project-layout]
+  - prompt: "Where should this stored procedure file live?"
+    must_load: [sql-layout]
+    must_not_load: [database-review, database-migrations]
+  - prompt: "Organize the frontend components folder"
+    must_load: [frontend-layout]
+    must_not_load: [project-layout, design-system]
+
+review_cluster:
+  - prompt: "Review this DAG before we deploy it"
+    must_load: [airflow-review]
+    must_not_load: [etl-review]
+  - prompt: "Review this stored procedure for deadlocks"
+    must_load: [database-review]
+    must_not_load: [sql-layout, database-migrations]
+  - prompt: "Review the whole pipeline - target counts do not match source"
+    must_load: [etl-review]
+    must_not_load: []
+  - prompt: "Review the dtsx package, Thai characters look wrong"
+    must_load: [ssis-review]
+    must_not_load: [database-review]
+  - prompt: "Is this endpoint change a breaking change?"
+    must_load: [api-review]
+    must_not_load: [api-design, fastapi-review]
+  - prompt: "Review the GitHub Actions change"
+    must_load: [ci-review]
+    must_not_load: [airflow-review]
+
+git_hygiene_scope:   # post-fix expectations (triggers narrowed 2026-07-17)
+  - prompt: "Move utils.py into the helpers folder"
+    must_load: []            # one-off move: no workflow skill should fire
+    must_not_load: [git-hygiene, repository-cleanup]
+  - prompt: "Set up the cleanup branch and commit sequence for the restructure"
+    must_load: [git-hygiene]
+    must_not_load: []
+  - prompt: "Stop tracking node_modules"
+    must_load: [git-hygiene]
+    must_not_load: [repository-cleanup]
+
+security_cluster:
+  - prompt: "Scan the repo for committed secrets before we go public"
+    must_load: [security-review]
+    must_not_load: [web-security, ci-review]
+  - prompt: "Add login with session cookies"
+    must_load: [web-security]
+    must_not_load: [security-review]
+
+engine_specificity:  # post-fix expectations (engine labels added 2026-07-17)
+  - prompt: "Review this PostgreSQL query for performance"
+    must_load: []            # database-review is T-SQL-labeled; generic §14 applies
+    must_not_load: []
+    note: "database-review MAY load as structural guidance; its body now states T-SQL specificity."
+
+airflow_authoring_vs_review:
+  - prompt: "Create an Airflow DAG that loads yesterday's orders"
+    must_load: [airflow]
+    must_not_load: [airflow-review, etl-review]
+  - prompt: "Add retry behavior to this Airflow task"
+    must_load: [airflow]
+    must_not_load: [airflow-review]
+
+evaluated_runs: []   # append {date, claude_version, results} entries here
