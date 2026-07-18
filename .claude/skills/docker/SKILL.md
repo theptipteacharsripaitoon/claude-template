@@ -10,14 +10,14 @@ Extends `CLAUDE.md`. When this skill loads, its rules and Done criteria apply on
 ## Dockerfile rules
 
 **Structure:**
-- **Multi-stage builds always.** Build deps stay in a builder stage; final image carries only runtime artifacts.
+- **Multi-stage builds by default.** Build deps stay in a builder stage; final image carries only runtime artifacts. Single-stage is acceptable for scratch/static-binary or asset-only images — state the justification.
 - **Pin base images by digest** in production: `FROM node:22-alpine@sha256:...`. Tag drift breaks reproducibility.
 - **No `:latest` tag** — neither base image nor produced image.
 - **Order layers by change frequency.** Least-changing first (system deps → package manifests → install → app source).
 - **`COPY` specific files**, not `COPY . .`. Untracked junk leaks into images.
 - **Set `WORKDIR`** explicitly. Never rely on default.
 - **Use `ENTRYPOINT` for the main process, `CMD` for default args.** Use exec form (`["cmd", "arg"]`), not shell form — signals must reach PID 1.
-- **Set `HEALTHCHECK`** for long-running services. The check must reflect dependency readiness, not just process up.
+- **Set `HEALTHCHECK`** for long-running services. The check must reflect dependency readiness, not just process up (canonical: observability skill).
 - **Cache mounts** for package managers: `RUN --mount=type=cache,target=/root/.npm npm ci`.
 
 **Security in build:**

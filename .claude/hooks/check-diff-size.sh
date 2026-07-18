@@ -48,12 +48,17 @@ case "$TOOL" in
       LINES_CHANGED=$OLD_LINES
     fi
     ;;
+  NotebookEdit)
+    CONTENT=$(json_get "$INPUT" '.tool_input.new_source')
+    LINES_CHANGED=$(count_lines "$CONTENT")
+    ;;
   MultiEdit)
+    # Legacy tool (removed in current Claude Code); handling kept for old versions.
     LINES_CHANGED=$(echo "$INPUT" | jq -r '
       [.tool_input.edits[]?
         | (.new_string // "" | split("\n") | length)
       ] | add // 0
-    ')
+    ' 2>/dev/null || echo 0)
     ;;
   *)
     exit 0

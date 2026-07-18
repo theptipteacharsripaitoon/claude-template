@@ -36,6 +36,12 @@ Hooks fire at lifecycle events. The most important is `PreToolUse`: it can **den
 
 Configure in `.claude/settings.json`. Project-level hooks ship with the repo and apply to every team member.
 
+> **Recipes below are illustrative, deliberately minimal versions.** The
+> shipped hooks in `.claude/hooks/` are the source of truth — they carry far
+> larger pattern lists, an ask-instead-of-deny path for dependency installs,
+> logging, overrides, and a regression suite (`tests/hooks/run-tests.sh`).
+> Copy the shipped scripts, not the recipes, into real projects.
+
 ### Recipe 1: Block destructive shell commands
 
 Drop into `.claude/hooks/block-destructive.sh`:

@@ -29,7 +29,7 @@ Python projects drift into "a folder of scripts that import each other by accide
 - **One module = one concern,** grouped by domain, not by type (`billing.py`, not `helpers2.py`; domain-grouping canonical: [project-layout](../project-layout/SKILL.md)). Unclear names (`utils.py` catch-alls, `new.py`, `test2.py`) are findings — naming review: project-layout.
 - **Entry points over loose scripts:** runnable things are `[project.scripts]` console entries or `python -m package.module` — a script that is also imported by other code is two things and should be split.
 - **Shared code is a real package** (installable or on an explicit `PYTHONPATH`), never reached by `sys.path.append("../somewhere")`.
-- **Environment junk stays ignored:** `.venv/`, `__pycache__/`, `.pytest_cache/`, build artifacts — ignore-list mechanics: git-hygiene (add `.venv/` there if missing).
+- **Environment junk stays ignored:** `.venv/`, `__pycache__/`, `.pytest_cache/`, build artifacts — ignore-target list canonical: git-hygiene.
 
 ## Cross-references
 

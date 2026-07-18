@@ -12,16 +12,20 @@ INPUT=$(read_input)
 # Different tools put content in different fields:
 #   Write: tool_input.content
 #   Edit:  tool_input.new_string
-#   MultiEdit: tool_input.edits[].new_string (array)
+#   NotebookEdit: tool_input.new_source
+#   (legacy MultiEdit: tool_input.edits[].new_string)
+# `|| true`: malformed JSON fails open (same policy as require_jq).
 CONTENT=$(echo "$INPUT" | jq -r '
   (.tool_input.content // "") +
   "\n" +
   (.tool_input.new_string // "") +
   "\n" +
+  (.tool_input.new_source // "") +
+  "\n" +
   ((.tool_input.edits // []) | map(.new_string // "") | join("\n"))
-')
+' 2>/dev/null || true)
 
-if [[ -z "$CONTENT" || "$CONTENT" == $'\n\n' ]]; then
+if [[ -z "${CONTENT//$'\n'/}" ]]; then
   exit 0
 fi
 

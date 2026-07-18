@@ -1,6 +1,6 @@
 ---
 name: git-hygiene
-description: Use when preparing git state for restructuring or cleanup work — creating the work branch, moving or renaming files, sequencing commits, or fixing what git tracks. Trigger on phrases like "move these files", "rename this module", "git mv", "set up the cleanup branch", "commit strategy", "update .gitignore", "stop tracking generated files", "untrack node_modules". Covers the clean-tree gate, move-first-rename-later, the cleanup commit sequence, and .gitignore standards. Do NOT use for commit-message format or branch naming rules (CLAUDE.md §11) or automated end-of-task commits.
+description: Use when preparing git state for a RESTRUCTURING or cleanup effort — the work branch, batches of file moves, commit sequencing, fixing what git tracks. Trigger on phrases like "restructure these folders", "set up the cleanup branch", "cleanup commit strategy", "git mv this batch", "stop tracking generated files", "untrack node_modules". Covers the clean-tree gate, move-first-rename-later, the cleanup commit sequence, and .gitignore standards. Do NOT use for a simple one-off move or rename the user asked for (just do it, commit per CLAUDE.md §11), commit-message format rules, or automated end-of-task commits.
 ---
 
 # Git Hygiene for Restructuring
@@ -17,6 +17,7 @@ File moves and cleanup churn destroy history and reviewability when done careles
 
 ## When NOT to use
 
+- A single move or rename the user directly asked for — perform it and commit per `CLAUDE.md` §11; no branch or sequence ceremony required.
 - Choosing commit types/format or branch names → `CLAUDE.md` §11.
 - Automated end-of-task commits; history rewrites of shared branches (forbidden, `CLAUDE.md` §11).
 
@@ -44,7 +45,7 @@ One logical change per commit, in this order:
 
 Generated artifacts are never tracked. Ignore-target list (this is also the "repository noise" audit target list):
 
-`__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.cache/`, `coverage/`, `htmlcov/`, `dist/`, `build/`, `*.egg-info/`, `node_modules/`, `logs/`, `tmp/`, `temp/`, `exports/`, `generated/`, debug outputs, backup files (`*.bak`, `*~`), OS junk (`.DS_Store`, `Thumbs.db`).
+`__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.cache/`, `coverage/`, `htmlcov/`, `dist/`, `build/`, `*.egg-info/`, `node_modules/`, `.venv/`, `venv/`, `logs/`, `tmp/`, `temp/`, `exports/`, `generated/`, debug outputs, backup files (`*.bak`, `*~`), OS junk (`.DS_Store`, `Thumbs.db`).
 
 - During an audit, the `.gitignore` is a PROPOSAL; it is written to the repo only in the hygiene commit after approval.
 - `.env*` and other secret files must be ignored before any commit lands (canonical: `CLAUDE.md` §7).

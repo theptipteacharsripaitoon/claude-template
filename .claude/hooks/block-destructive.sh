@@ -57,8 +57,14 @@ DESTRUCTIVE_PATTERNS=(
   'aws[[:space:]]+s3[[:space:]]+rb[[:space:]]+.*--force'  # delete S3 bucket
   'gcloud[[:space:]]+.*delete[[:space:]]'                 # gcloud delete
 
-  # Package managers (per CLAUDE.md §2: propose, don't install).
-  # Modern npm 5+ saves by default — block any `npm install <pkg>`, not just --save.
+)
+
+# Package managers (per CLAUDE.md §2: propose, don't install). These get an
+# interactive ASK (hookSpecificOutput.permissionDecision) instead of a hard
+# deny — installing a dependency is a legitimate action that needs the user's
+# yes, not a blocked one. Modern npm 5+ saves by default — match any
+# `npm install <pkg>`, not just --save.
+ASK_PATTERNS=(
   'npm[[:space:]]+install[[:space:]]+[@a-zA-Z]'           # npm install <pkg> or @scope
   'npm[[:space:]]+i[[:space:]]+[@a-zA-Z]'                 # npm i <pkg> shorthand
   'yarn[[:space:]]+add[[:space:]]'
@@ -88,6 +94,17 @@ for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
     echo "  - The user runs it themselves, OR" >&2
     echo "  - Set CLAUDE_HOOK_OVERRIDE=block-destructive for one session (logged to .claude/logs/hooks.log)" >&2
     exit 2
+  fi
+done
+
+for pattern in "${ASK_PATTERNS[@]}"; do
+  if echo "$CMD" | grep -qE "$pattern"; then
+    if check_override "block-destructive"; then
+      exit 0  # Override active; allowed but logged.
+    fi
+    log_event "ASK" "dependency-install" "Command matches '$pattern' — asking the user"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Dependency install (CLAUDE.md §2 — propose, user approves). Matched pattern: %s"}}\n' "$pattern"
+    exit 0
   fi
 done
 

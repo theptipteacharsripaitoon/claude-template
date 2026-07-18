@@ -1,6 +1,6 @@
 ---
 name: python-refactor
-description: Use when restructuring existing Python code without changing behavior — renames, extract function/module, moving code between modules, untangling imports. Trigger on phrases like "refactor this", "extract this into a module", "rename this function everywhere", "split this file", "clean up this module". Behavior preservation is mandatory and test-proven. Do NOT use for architecture rewrites or module redesign (out of scope by policy), new features, bug fixes (fix first, refactor separately), or performance work (python-performance).
+description: Use when restructuring existing Python code without changing behavior — renames, extract function/module, moving code between modules, untangling imports. Trigger on phrases like "refactor this", "extract this into a module", "rename this function everywhere", "split this file", "restructure this module". Behavior preservation is mandatory and test-proven. Do NOT use for architecture rewrites or module redesign (out of scope by policy), new features, bug fixes (fix first, refactor separately), or performance work (python-performance).
 ---
 
 # Python Refactor
@@ -22,7 +22,7 @@ A refactor that changes behavior is a bug with good intentions. This workflow ma
 
 ## Workflow
 
-1. **Characterize first.** The code to be refactored has tests proving current behavior. None exist → write characterization tests BEFORE touching anything (pin current outputs, even odd ones — behavior, not ideals; authoring: [testing](../testing/SKILL.md)).
+1. **Characterize first.** The code to be refactored has tests proving current behavior. None exist → write characterization tests BEFORE touching anything (pin current outputs, even odd ones — behavior, not ideals; authoring: [testing](../testing/SKILL.md)). For a trivial tool-assisted rename with existing passing tests, running those tests is sufficient characterization.
 2. **One mechanical transform per commit** — a rename, an extract, a move. Never mixed, never combined with logic edits. (Move first, rename later — same discipline git-hygiene applies to files.)
 3. **Update every reference in the same commit** as the transform — imports, `__all__`, entry points, string references (task names, dynamic imports, config values pointing at dotted paths).
 4. **Keep old import paths working during multi-step moves** — a re-export shim at the old location (`from new.home import thing`) until all callers migrate, then remove the shim as its own commit.
