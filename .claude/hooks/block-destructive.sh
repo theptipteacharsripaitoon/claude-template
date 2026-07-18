@@ -17,6 +17,8 @@ fi
 # Each line is a separate regex. Be conservative — false positives are better
 # than missing a real disaster. Claude will surface a normal request to the
 # user when blocked, who can override by running the command themselves.
+# shellcheck disable=SC2016  # single quotes are intentional: these are regexes,
+# the literal '\$HOME' must NOT be shell-expanded.
 DESTRUCTIVE_PATTERNS=(
   # Filesystem
   'rm[[:space:]]+-rf?[[:space:]]+/'                       # rm -rf /

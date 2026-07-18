@@ -5,7 +5,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-export CLAUDE_PROJECT_DIR="$(cd ../.. && pwd)"
+# Declare then assign so the subshell's exit status isn't masked (SC2155).
+CLAUDE_PROJECT_DIR="$(cd ../.. && pwd)"
+export CLAUDE_PROJECT_DIR
 
 echo "Installing Claude Code hooks..."
 
