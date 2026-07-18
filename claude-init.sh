@@ -34,6 +34,12 @@ claude-init() {
   cp "$TEMPLATE/CLAUDE.md" ./
   cp -r "$TEMPLATE/.claude" ./
 
+  # Copy root protections so generated projects inherit them (without these,
+  # `git add -A` below would stage .env / machine-local state, and .sh hooks
+  # could be checked out CRLF on Windows and break bash).
+  [[ -f "$TEMPLATE/.gitignore" ]] && cp "$TEMPLATE/.gitignore" ./
+  [[ -f "$TEMPLATE/.gitattributes" ]] && cp "$TEMPLATE/.gitattributes" ./
+
   if ! bash .claude/hooks/install.sh; then
     echo "✗ Hook install failed. Project at $dest may be incomplete."
     return 1

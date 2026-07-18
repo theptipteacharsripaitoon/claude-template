@@ -65,6 +65,7 @@ run_check() {
 
 echo "🔍 Running Definition of Done verification..." >&2
 FAILED=0
+RAN=0  # how many checks actually executed — distinguishes "passed" from "none ran"
 
 # Detect Node package manager from lockfile so we use the right one.
 detect_node_pm() {
@@ -75,47 +76,63 @@ detect_node_pm() {
   else echo "npm"; fi
 }
 
-# Auto-detect project type and run the right commands.
+# Independent `if`s (not if/elif): a polyglot repo runs EVERY ecosystem present,
+# not just the first one detected.
 if [[ -f package.json ]]; then
   PM=$(detect_node_pm)
   if jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
-    run_check "typecheck" "$PM run typecheck" || ((FAILED++)) || true
+    ((RAN++)); run_check "typecheck" "$PM run typecheck" || ((FAILED++)) || true
   fi
   if jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-    run_check "lint" "$PM run lint" || ((FAILED++)) || true
+    ((RAN++)); run_check "lint" "$PM run lint" || ((FAILED++)) || true
   fi
   if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+    ((RAN++))
     if [[ "$PM" == "npm" ]]; then
       run_check "test" "npm test" || ((FAILED++)) || true
     else
       run_check "test" "$PM test" || ((FAILED++)) || true
     fi
   fi
-elif [[ -f pyproject.toml ]]; then
+fi
+if [[ -f pyproject.toml ]]; then
   # Use { } not ( ) — () creates a subshell, FAILED++ wouldn't propagate.
   if command -v ruff >/dev/null; then
-    { run_check "ruff" "ruff check ." || ((FAILED++)); } || true
+    ((RAN++)); { run_check "ruff" "ruff check ." || ((FAILED++)); } || true
   fi
   if command -v mypy >/dev/null; then
-    { run_check "mypy" "mypy ." || ((FAILED++)); } || true
+    ((RAN++)); { run_check "mypy" "mypy ." || ((FAILED++)); } || true
   fi
   if command -v pytest >/dev/null; then
-    { run_check "pytest" "pytest -q" || ((FAILED++)); } || true
+    ((RAN++)); { run_check "pytest" "pytest -q" || ((FAILED++)); } || true
   fi
-elif [[ -f Cargo.toml ]]; then
-  run_check "cargo check" "cargo check" || ((FAILED++)) || true
-  run_check "cargo test" "cargo test --quiet" || ((FAILED++)) || true
-elif [[ -f go.mod ]]; then
-  run_check "go vet" "go vet ./..." || ((FAILED++)) || true
-  run_check "go test" "go test ./..." || ((FAILED++)) || true
+fi
+if [[ -f Cargo.toml ]]; then
+  ((RAN++)); run_check "cargo check" "cargo check" || ((FAILED++)) || true
+  ((RAN++)); run_check "cargo test" "cargo test --quiet" || ((FAILED++)) || true
+fi
+if [[ -f go.mod ]]; then
+  ((RAN++)); run_check "go vet" "go vet ./..." || ((FAILED++)) || true
+  ((RAN++)); run_check "go test" "go test ./..." || ((FAILED++)) || true
 fi
 
 if (( FAILED > 0 )); then
   echo "" >&2
-  echo "🛑 Definition of Done unmet: $FAILED check(s) failed." >&2
+  echo "🛑 Definition of Done unmet: $FAILED of $RAN check(s) failed." >&2
   echo "   Per CLAUDE.md §16, do not declare success." >&2
   exit 2
 fi
 
-echo "✓ All verification checks passed." >&2
+if (( RAN == 0 )); then
+  # Code changed but no checker was discovered/installed. This is NOT success —
+  # report it honestly so "no checks ran" is never mistaken for "checks passed".
+  echo "" >&2
+  echo "⚠️  No verification commands were discovered for this repo (no package.json" >&2
+  echo "   script, pyproject tool, Cargo.toml, or go.mod checker found)." >&2
+  echo "   Code changed but nothing was verified — run the project's checks manually" >&2
+  echo "   before declaring done (CLAUDE.md §14/§16)." >&2
+  exit 0
+fi
+
+echo "✓ All $RAN verification check(s) passed." >&2
 exit 0

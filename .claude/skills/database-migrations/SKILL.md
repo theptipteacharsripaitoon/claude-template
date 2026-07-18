@@ -28,9 +28,9 @@ Concrete: renaming a column.
 
 ## Reversibility
 
-- **Every migration is reversible.** Provide both `up` and `down` (or whatever your tool's terminology is).
-- If `down` is unsafe (e.g., dropping a column with new data), document why and provide a manual recovery procedure. Do not silently omit `down`.
-- Test `down` in CI: `up`, then `down`, then `up` again — the schema must be identical.
+- **Reversible by default.** Provide both `up` and `down` (or whatever your tool's terminology is) unless a safe `down` is genuinely impossible.
+- If `down` is unsafe (e.g., dropping a column with new data), document why and provide a manual recovery procedure instead of an executable destructive `down`. Do not silently omit reversibility.
+- When a `down` exists, test it in CI: `up`, then `down`, then `up` again — the schema must be identical. Migrations with a documented-unsafe `down` are exempt from the round-trip.
 
 ## Lock-safe DDL
 

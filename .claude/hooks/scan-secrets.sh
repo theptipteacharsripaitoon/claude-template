@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Blocks writes containing secret-shaped strings.
 # Per CLAUDE.md §7 Security Foundations > Secrets & Credentials.
-# Hook event: PreToolUse, matcher: Edit|Write|MultiEdit
+# Hook event: PreToolUse, matcher: Edit|Write|NotebookEdit
 
 export CLAUDE_HOOK_NAME="scan-secrets"
 source "$(dirname "$0")/lib.sh"
@@ -64,8 +64,11 @@ SECRET_PATTERNS=(
 )
 
 # Allow obviously-fake test fixtures so legitimate test data does not block.
-# Patterns that mean "this is fake" — if the content matches one of these in
-# context, the secret-shaped string is probably a fixture.
+# A marker suppresses a match ONLY when it appears INSIDE the matched value —
+# not merely somewhere on the line. Line-scoped marking let a real secret slip
+# through whenever the line also contained a word like "example" (and let a real
+# second match hide behind a fake first match). Value-scoped marking matches the
+# hook's own guidance below ("add a marker ... to the value").
 FAKE_MARKERS=(
   'EXAMPLE'
   'example'
@@ -79,23 +82,27 @@ FAKE_MARKERS=(
   'abcdef0123'
 )
 
-for pattern in "${SECRET_PATTERNS[@]}"; do
-  MATCH=$(echo "$CONTENT" | grep -oE -e "$pattern" | head -1 || true)
-  if [[ -n "$MATCH" ]]; then
-    # Check if a fake marker is on the same line.
-    LINE=$(echo "$CONTENT" | grep -E -e "$pattern" | head -1 || true)
-    IS_FAKE=false
-    for marker in "${FAKE_MARKERS[@]}"; do
-      if echo "$LINE" | grep -qE -e "$marker"; then
-        IS_FAKE=true
-        break
-      fi
-    done
+# Returns 0 (true) when the matched value itself carries a fake marker.
+value_is_fixture() {
+  local value="$1" marker
+  for marker in "${FAKE_MARKERS[@]}"; do
+    if printf '%s' "$value" | grep -qE -e "$marker"; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-    if [[ "$IS_FAKE" == "true" ]]; then
-      # Don't include preview in log_warn — even fake previews go to disk
-      # via log_event. Keep stderr-only for any matched content.
-      log_warn "Skipping secret-shaped string that looks like a test fixture (matched pattern '$pattern')."
+for pattern in "${SECRET_PATTERNS[@]}"; do
+  # Inspect EVERY match of this pattern, not just the first. A real secret must
+  # not be able to hide behind a fixture that matched earlier in the content.
+  while IFS= read -r MATCH; do
+    [[ -z "$MATCH" ]] && continue
+
+    if value_is_fixture "$MATCH"; then
+      # Marker is inside the value — treat this occurrence as a fixture and keep
+      # scanning later matches. No preview to disk (log_event persists detail).
+      log_warn "Skipping secret-shaped fixture value (matched pattern '$pattern')."
       continue
     fi
 
@@ -116,7 +123,7 @@ for pattern in "${SECRET_PATTERNS[@]}"; do
     echo "If this is real:  ROTATE the secret immediately and use env vars / a secret manager." >&2
     echo "If this is fake:  add a marker like 'EXAMPLE', 'fake-', or 'test-' to the value." >&2
     exit 2
-  fi
+  done < <(printf '%s\n' "$CONTENT" | grep -oE -e "$pattern" || true)
 done
 
 exit 0

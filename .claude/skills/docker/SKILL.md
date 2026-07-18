@@ -1,6 +1,6 @@
 ---
 name: docker
-description: Use when creating, modifying, building, or reviewing Dockerfile, .dockerignore, docker-compose.yml, container images, or any container-related task. Trigger on phrases like "build the image", "fix the Dockerfile", "containerize this", "update docker-compose", "image is too big", "container won't start", or any file path matching Dockerfile* or docker-compose*. Covers multi-stage builds, image security, runtime hardening, and image size optimization.
+description: Use when creating, modifying, or building a Dockerfile, .dockerignore, docker-compose.yml, container image, or any container authoring task. Trigger on phrases like "build the image", "fix the Dockerfile", "containerize this", "update docker-compose", "image is too big", "container won't start", or any file path matching Dockerfile* or docker-compose*. Covers multi-stage builds, image security, runtime hardening, and image size optimization. Do NOT use for reviewing a container change before merge (docker-review) or cluster manifests (kubernetes).
 ---
 
 # Docker & Containers
@@ -77,7 +77,7 @@ When running containers (compose, k8s, ECS, etc.):
 
 ## Done criteria (in addition to CLAUDE.md §14)
 
-- [ ] Dockerfile uses multi-stage build.
+- [ ] Dockerfile uses a multi-stage build, or a single-stage justification is stated (scratch/static-binary/asset-only per the Structure rule).
 - [ ] Final image runs as non-root (UID >10000).
 - [ ] No secrets, no `:latest`, no `COPY . .` without `.dockerignore`.
 - [ ] Image scan (trivy/grype) passes with zero high/critical CVEs.

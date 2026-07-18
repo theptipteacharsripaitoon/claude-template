@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Warns on suspiciously large file rewrites.
 # Per CLAUDE.md §9 Refactoring, Scope & Diff Discipline.
-# Hook event: PreToolUse, matcher: Edit|Write|MultiEdit
+# Hook event: PreToolUse, matcher: Edit|Write|NotebookEdit
 #
 # Behavior: WARN by default (non-blocking). To make this blocking,
 # change `exit 0` at the end of the warn branch to `exit 2`.
