@@ -18,13 +18,30 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling), force-push, `terraform apply`, SQL destruction (case-insensitive), etc.; **asks** for dependency install/upgrade/remove (lockfile *restores* like `npm ci` stay allowed) | Hard block (exit 2) / ask |
-| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets (`.env*`, credentials, `.git/`) → hard block; CI/infra/migrations/lockfiles/settings/hooks → **ask** | Deny / ask |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, `\rm`, `-- /`), force-push (incl. `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified), etc.; **asks** for dependency install/upgrade/remove (lockfile *restores* like `npm ci` stay allowed) | Hard block (exit 2) / ask |
+| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*` incl. case variants, credentials, `id_rsa`/`*.pem`/`*.key`, `.git/`) → hard block; CI/infra/migrations/lockfiles/settings/hooks/`*.tf`/`.netrc`/`action.yml`/`.gitmodules` → **ask** | Deny / ask |
 | `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
 | `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
 | `verify-done.sh` | Stop | Reminds about Definition of Done if code changed | Reminder / block |
 
 The PreToolUse validators declare a 10 s `timeout` in `settings.json` (they finish in milliseconds; the docs default is 600 s). The Stop hook deliberately has **no** short timeout — blocking mode runs real test suites. Both `ask` decisions are emitted as jq-built JSON, so hostile filenames or future pattern edits cannot corrupt the payload.
+
+### Command-policy tiers (how `block-destructive.sh` maps to CLAUDE.md §2)
+
+CLAUDE.md §2 says several classes of command "require explicit user confirmation." The hook implements that as **four tiers**, so policy and enforcement agree:
+
+| Tier | Behavior | Examples |
+|---|---|---|
+| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, `\rm`, `rm -rf -- /`), force-push (incl. `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (incl. schema-qualified), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
+| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove (lockfile *restores* like `npm ci` are allowed) |
+| **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here, so still surfaced to you by Claude Code, never silently executed |
+| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call |
+
+The hook is deliberately conservative: a documentation string that merely *mentions* `DROP TABLE` (an `echo` or a commit message) is blocked too. False positives are cheaper than a real disaster; override or reword.
+
+### When hooks disagree on one edit
+
+An Edit/Write to a protected path that is also an oversized rewrite triggers both `protect-files` (**ask**) and `check-diff-size` (**deny**). Claude Code applies **deny before ask**, so approving the protected path does **not** authorize the oversized write — split it, or raise `CLAUDE_DIFF_BLOCK_LINES` / set `CLAUDE_HOOK_OVERRIDE`. This is intentional: an oversized rewrite should be reconsidered regardless of which path it targets.
 
 ## Override (when you genuinely need to bypass)
 
@@ -42,7 +59,11 @@ Every override is recorded to `.claude/logs/hooks.log` with timestamp and which 
 
 ## Logs and observability
 
-Each hook decision is appended to `.claude/logs/hooks.log` (tab-separated):
+Each hook decision is appended to `.claude/logs/hooks.log` (tab-separated). The
+`category` and `detail` columns can contain user-controlled data (e.g. a file
+path), so `log_event` collapses tab/newline/other control characters to spaces
+before writing — one event is always exactly one line with a fixed column count,
+so a crafted path cannot forge an extra record.
 
 ```
 2026-05-10T10:52:26Z   BLOCK     block-destructive   destructive command pattern   Command matches 'rm -rf /...'
@@ -116,6 +137,12 @@ This runs typecheck/lint/test on every Stop event. Heavy but catches "I'm done" 
 Exit semantics: 0 = all discovered checks passed (or none could run — reported honestly, never
 as "passed"), 2 = at least one check failed. An ecosystem whose toolchain is missing (e.g.
 `Cargo.toml` with no `cargo` installed) is skipped with a note, not reported as a failure.
+
+Blocking mode enforces *"the checks that exist pass"*, **not** *"checks must exist."* When code
+changed but no checker is discoverable, the hook exits 0 with an explicit "nothing was verified"
+warning rather than exit 2 — blocking there would only force a no-op continuation (the re-entry
+guard lets the next Stop through anyway) without verifying anything. It detects the git work tree
+with `git rev-parse`, so this holds in linked worktrees too.
 
 ### Whitelist a fake-looking secret
 If `scan-secrets.sh` blocks a legitimate test fixture, embed a fake marker **inside the value**:

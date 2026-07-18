@@ -10,8 +10,11 @@
 #                    settings/hooks. Legitimate WITH the user's approval, so the
 #                    user can approve in-chat instead of restarting (§2 "confirm").
 #
-# Matching is on normalized PATH COMPONENTS / exact basenames — never raw
-# substrings — so `config.environment.ts` is not mistaken for `.env`.
+# Matching is on slash-bounded PATH SEGMENTS / exact basenames (case-folded for
+# the .env check) — never raw substrings — so `config.environment.ts` is not
+# mistaken for `.env`. Limitation: `..` is NOT resolved, so a path like
+# `infra/../src/app.py` still matches the `infra` segment and errs toward ASK
+# (over-cautious, never a dangerous allow). Symlinks are likewise not resolved.
 
 export CLAUDE_HOOK_NAME="protect-files"
 source "$(dirname "$0")/lib.sh"
@@ -58,9 +61,18 @@ base_is() {
 
 # --- DENY: secrets and git internals (hard block) -----------------------------
 DENY=false
-# .env and any .env.<suffix> (allowlisted templates already returned above).
-if [[ "$BASE" == ".env" || "$BASE" == .env.* ]]; then DENY=true; fi
+# .env and any .env.<suffix>. Case-folded: on Windows/macOS (case-insensitive
+# filesystems) `.ENV` and `.env` are the SAME file, so a case variant must not
+# slip past. Allowlisted templates already returned above.
+BASE_LC="${BASE,,}"
+if [[ "$BASE_LC" == ".env" || "$BASE_LC" == .env.* ]]; then DENY=true; fi
 base_is "secrets.yaml" "secrets.yml" "credentials.json" "credentials.yaml" && DENY=true
+# Private keys and certificates are secret files by name — deny by extension /
+# well-known basenames even when the scanner cannot see the (binary) contents.
+case "$BASE_LC" in
+  *.pem|*.key|*.p12|*.pfx|*.keystore|*.jks) DENY=true ;;
+esac
+base_is "id_rsa" "id_dsa" "id_ecdsa" "id_ed25519" && DENY=true
 has_segment ".secrets" && DENY=true
 has_segment ".git" && DENY=true
 
@@ -86,14 +98,22 @@ base_is "package-lock.json" "pnpm-lock.yaml" "yarn.lock" "uv.lock" "poetry.lock"
         "Pipfile.lock" "Cargo.lock" "go.sum" "Gemfile.lock" "composer.lock" && ASK=true
 # CI/CD
 has_segment ".github" && has_segment "workflows" && ASK=true
+# Composite/custom action definitions run in CI just like workflows do.
+{ has_segment ".github" && base_is "action.yml" "action.yaml"; } && ASK=true
 base_is ".gitlab-ci.yml" "Jenkinsfile" "azure-pipelines.yml" ".drone.yml" && ASK=true
 has_segment ".circleci" && ASK=true
 has_segment "buildkite" && ASK=true
+# Credential/registry config that commonly carries tokens or passwords.
+base_is ".netrc" ".npmrc" ".pypirc" && ASK=true
+# Submodule source pointers (a changed URL can repoint a submodule).
+base_is ".gitmodules" && ASK=true
 # Infrastructure
 has_segment "infra" && ASK=true
 has_segment "terraform" && ASK=true
 has_segment "pulumi" && ASK=true
 has_segment "cdk" && ASK=true
+# Terraform sources anywhere (infra is sensitive regardless of folder).
+case "$BASE_LC" in *.tf|*.tfvars) ASK=true ;; esac
 # Kubernetes / Helm (production)
 { has_segment "k8s" || has_segment "manifests" || has_segment "charts"; } &&
   { has_segment "prod" || has_segment "production"; } && ASK=true

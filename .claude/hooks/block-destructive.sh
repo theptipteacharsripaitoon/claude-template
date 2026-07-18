@@ -22,7 +22,12 @@ fi
 # command position so substrings of other words (confirm, npm) can never match.
 # The dangerous-target patterns below append what the recursion aims at.
 RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*'
-RM_REC="(^|[[:space:];|&])rm[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+"
+# Command-start anchor also allows a path prefix (`/bin/rm`) or an alias-escape
+# (`\rm`): the char before `rm` may be start-of-string, a shell separator, `/`,
+# or `\`. A letter before `rm` (e.g. `confirm`) still cannot match.
+# A trailing `(--[[:space:]]+)?` lets the idiomatic end-of-options marker sit
+# between the flags and the target (`rm -rf -- /`).
+RM_REC="(^|[[:space:];|&/\\])rm[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+(--[[:space:]]+)?"
 
 # shellcheck disable=SC2016  # single quotes are intentional: these are regexes,
 # the literal '\$HOME' must NOT be shell-expanded.
@@ -50,6 +55,7 @@ DESTRUCTIVE_PATTERNS=(
   # Git destructive
   'git[[:space:]]+push[[:space:]]+.*--force'              # force push
   'git[[:space:]]+push[[:space:]]+.*-f([[:space:]]|$)'    # short -f
+  'git[[:space:]]+push[[:space:]]+.*[[:space:]]\+[A-Za-z0-9_/]'  # force via +refspec (git push origin +main)
   'git[[:space:]]+reset[[:space:]]+--hard'                # hard reset
   # clean needs BOTH -f and -d, in either order, same cluster or split
   'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*(f[a-zA-Z]*d|d[a-zA-Z]*f)'
@@ -58,10 +64,12 @@ DESTRUCTIVE_PATTERNS=(
   'git[[:space:]]+filter-branch'                          # history rewrite
   'git[[:space:]]+update-ref[[:space:]]+-d'               # delete ref
 
-  # Database
-  'DROP[[:space:]]+(TABLE|DATABASE|SCHEMA)'               # DROP TABLE/DB
+  # Database. DELETE table-name class includes . [ ] so schema-qualified and
+  # bracketed forms (dbo.Users, [dbo].[Users]) are covered; a WHERE clause still
+  # breaks the match (the name is not immediately followed by ';').
+  'DROP[[:space:]]+(TABLE|DATABASE|SCHEMA|VIEW|PROC|PROCEDURE|INDEX|FUNCTION|TRIGGER)' # DROP object
   'TRUNCATE[[:space:]]+TABLE'                             # TRUNCATE
-  'DELETE[[:space:]]+FROM[[:space:]]+[a-zA-Z_]+[[:space:]]*;' # DELETE without WHERE
+  'DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*;' # DELETE without WHERE
 
   # Cluster / cloud
   'kubectl[[:space:]]+delete[[:space:]]+(namespace|ns)[[:space:]]'

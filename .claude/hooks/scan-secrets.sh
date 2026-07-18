@@ -111,14 +111,16 @@ for pattern in "${SECRET_PATTERNS[@]}"; do
       continue
     fi
 
-    # IMPORTANT: do not put the matched preview into log_block's detail —
-    # that goes to .claude/logs/hooks.log on disk. Show preview only in
-    # ephemeral stderr (which Claude sees once, then it's gone).
+    # NEVER print the matched value — not in full, not a prefix, not a preview.
+    # stderr is fed back to Claude and may be captured by wrapping tooling, so
+    # even 8 characters of a token is a partial exposure (and Claude already
+    # holds the full content it tried to write, so a preview tells it nothing).
+    # Only the pattern NAME and the non-secret location go anywhere.
     log_block \
       "secret-shaped string" \
       "Content contains a string matching pattern '$pattern'." \
       "CLAUDE.md §7 Security Foundations"
-    echo "   Match preview (not persisted to log): ${MATCH:0:8}..." >&2
+    echo "   Matched secret-shaped pattern '$pattern' — value withheld." >&2
     echo "" >&2
     echo "If this is real:  ROTATE the secret immediately and use env vars / a secret manager." >&2
     echo "If this is fake:  add a marker like 'EXAMPLE', 'fake-', or 'test-' to the value." >&2

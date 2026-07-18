@@ -105,6 +105,12 @@ SRC="/mnt/c/Users/<your-windows-username>/Desktop/Claude"
 
 cp "$SRC/CLAUDE.md" ./
 cp -r "$SRC/.claude" ./
+# .gitignore and .gitattributes are REQUIRED root files — claude-init.sh refuses
+# to bootstrap a template that is missing either (and without them, `git add -A`
+# would stage .env / machine-local state, and .sh hooks can be checked out CRLF
+# on Windows and break bash).
+cp "$SRC/.gitignore" ./
+cp "$SRC/.gitattributes" ./
 
 # Create logs folder if missing
 mkdir -p .claude/logs
@@ -118,6 +124,8 @@ After getting the template, you should have:
 ```
 ~/Claude_Project/main_template/
 ├── CLAUDE.md
+├── .gitignore          # required — claude-init refuses to bootstrap without it
+├── .gitattributes      # required — forces LF on *.sh so hooks run on Linux/WSL
 └── .claude/
     ├── settings.json
     ├── ENFORCEMENT.md
@@ -472,7 +480,7 @@ claude-init <name>
 
 | File | Purpose | Edit per project? |
 |---|---|---|
-| `CLAUDE.md` (universal §1-18) | Engineering policy | No (universal) |
+| `CLAUDE.md` (universal §0-20) | Engineering policy | No (universal) |
 | `CLAUDE.md` Project Configuration | Tech stack hints | **Yes — fill before first use** |
 | `.claude/settings.json` | Hook wiring | No |
 | `.claude/ENFORCEMENT.md` | Design doc | No |
