@@ -164,11 +164,12 @@ EOF
     printf 'def util():\n    return 1\n' > utils.py
     printf 'from utils import util\n' > app.py
     ;;
-  cleanup-branch-sequence)
+  cleanup-branch-sequence|cleanup-repo-recall)
     mkdir -p src build dist
     printf 'print("app")\n' > src/app.py
     printf 'artifact\n' > build/out.bin
     printf 'artifact\n' > dist/bundle.js
+    printf 'old scratch\n' > untitled1.py
     ;;
   untrack-node-modules)
     mkdir -p node_modules/leftpad src
