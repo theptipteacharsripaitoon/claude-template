@@ -311,3 +311,61 @@ conditional; add workflow `permissions:`+`timeout-minutes`+pin pyyaml.
 
 *(Adjudication against `external-review-v2.md` follows in `review-adjudication-v2.md`, produced after
 this report is committed.)*
+
+---
+
+# Phase 5 — Post-implementation (added after fixes; Phase 1 findings above are unchanged)
+
+Implemented the adjudicated net improvements (see `review-adjudication-v2.md` for the decision table).
+The Phase 1 findings above are the pre-change record and were **not** edited.
+
+### What changed
+- **scan-secrets** — scans every match per pattern; fake-marker detection scoped to the matched
+  value. Closes both confirmed bypasses. Tests SS9/SS10.
+- **protect-files** — normalized path-component / exact-basename matching (fixes
+  `config.environment.ts`); secrets hard-deny, approvable paths (CI/infra/migrations/lockfiles/
+  settings/hooks) emit structured `ask`. Tests PF10/PF11/PF13, PFA1–4, NB1.
+- **verify-done** — polyglot (independent `if`s) and distinguishes "no checks discovered" from
+  "passed". Test VD5.
+- **claude-init.sh** — copies `.gitignore` + `.gitattributes` into generated projects. Tests BOOT1–3.
+- **CLAUDE.md §16** — task-type conditional DoD; strictness preserved for behavioral/high-risk code.
+- **CI** — `permissions: contents: read`, `timeout-minutes: 10`, pinned `pyyaml==6.0.2`.
+- **docker skill** — description scoped to authoring (+ docker-review disclaimer); multi-stage Done
+  criterion made conditional.
+- **database-migrations** — reversibility wording aligned with its conditional Done.
+- **Lint/docs** — SC2155/SC2016 resolved; stale `MultiEdit` headers → `NotebookEdit`; hooks README
+  synced (invocation, tiers, NotebookEdit, value-scoped markers); README/CHANGELOG counts updated.
+
+### Verification (local)
+- Hook regression suite: **50/50 pass** (was 39; +11: SS9/SS10, PF10/PF11/PF13, PFA1–4, VD5, BOOT1–3).
+- Installer end-to-end: pass (exit 0).
+- ShellCheck (`koalaman/shellcheck:v0.10.0`, LF copies): **clean (exit 0)** on all hooks + tests.
+- Catalog check: pass ("37 skills checked / ALL CHECKS PASS").
+- Live routing re-measure after the docker fix: "Review the Dockerfile before we merge" now routes
+  to **`docker-review` alone** in 2 of 3 runs (was consistently docker-review + docker); "Is this
+  container image safe to ship?" → `docker-review` alone. Net reduction in the measured conflict.
+
+### Score after changes: **8.3 / 10**
+
+| Category (weight) | Before | After | Note |
+|---|---:|---:|---|
+| Technical correctness (15%) | 7.5 | 8.5 | secret bypasses + no-checks-ran fixed |
+| Skill trigger quality (15%) | 7.5 | 8.0 | docker conflict reduced (measured) |
+| Hook correctness (15%) | 6.5 | 8.5 | scan-secrets + protect-files + verify-done fixed, regression-covered |
+| Conflict avoidance (10%) | 7.0 | 8.0 | docker ownership fixed; DoD/risk aligned |
+| Safety & permissions (10%) | 7.5 | 8.5 | approval now honored via `ask`; FP removed |
+| Testing & evaluation (15%) | 7.0 | 8.5 | +11 tests incl. all confirmed failure modes; live routing sample |
+| Context efficiency (5%) | 8.0 | 8.0 | unchanged |
+| Team usability (5%) | 8.0 | 8.5 | docs match implementation |
+| Maintainability (5%) | 7.5 | 8.5 | shellcheck-clean gate; drift removed |
+| Public-template readiness (5%) | 6.0 | 6.5 | bootstrap fixed, but CI still blocked by billing + no LICENSE |
+
+Weighted total ≈ **8.3**. It does not reach 9.0 because two ceilings are **owner-only**: CI cannot
+produce a green run until the GitHub billing lock is cleared, and there is no `LICENSE`. Both are
+recorded as owner decisions; no repo change can resolve them.
+
+### Remaining limitations
+- CI green depends on the owner clearing the billing lock (repo-side workflow is correct + locally green).
+- No `LICENSE` (owner must choose).
+- Full 19-case routing precision/recall needs per-domain seed projects; a 9-case sample was run.
+- verify-done session attribution is documented, not reworked (a Stop hook lacks a session baseline).

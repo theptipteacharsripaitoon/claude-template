@@ -78,3 +78,11 @@ A finding is not accepted because GPT-5.6 reported it, nor rejected because it c
   as a limitation; not reworked.
 - **CI cannot be turned green from the repo** until the billing lock is cleared; the repo-side
   ShellCheck/permissions/timeout fixes are necessary-but-not-sufficient.
+
+## Post-implementation status (added after fixes)
+
+All "Implement" rows above were applied and verified locally (hook suite 50/50, ShellCheck clean,
+catalog pass, bootstrap validated, docker routing re-measured). Details and the before/after score
+(7.2 → 8.3) are in the Phase 5 section of [claude-independent-audit-v2.md](claude-independent-audit-v2.md).
+All "Preserve" rows were left unchanged, as decided. Two owner actions remain outstanding and cap the
+score below 9.0: clear the GitHub billing lock (for a green CI run) and add a `LICENSE`.
