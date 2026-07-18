@@ -114,7 +114,11 @@ if [[ "$ASK" == "true" ]]; then
     exit 0
   fi
   log_event "ASK" "protected-file" "$FILE needs approval before editing"
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Protected path (CLAUDE.md §2 — confirm before editing): %s. Approve to proceed, or edit it yourself."}}\n' "$BASE"
+  # Built with jq, never printf-interpolated: the basename is user-controlled,
+  # and a quote/tab/newline in it must not be able to corrupt the JSON (which
+  # would silently drop the ask).
+  jq -cn --arg base "$BASE" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:("Protected path (CLAUDE.md §2 — confirm before editing): " + $base + ". Approve to proceed, or edit it yourself.")}}'
   exit 0
 fi
 
