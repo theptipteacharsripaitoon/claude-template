@@ -10,8 +10,11 @@
 #                    settings/hooks. Legitimate WITH the user's approval, so the
 #                    user can approve in-chat instead of restarting (§2 "confirm").
 #
-# Matching is on normalized PATH COMPONENTS / exact basenames — never raw
-# substrings — so `config.environment.ts` is not mistaken for `.env`.
+# Matching is on slash-bounded PATH SEGMENTS / exact basenames (case-folded for
+# the .env check) — never raw substrings — so `config.environment.ts` is not
+# mistaken for `.env`. Limitation: `..` is NOT resolved, so a path like
+# `infra/../src/app.py` still matches the `infra` segment and errs toward ASK
+# (over-cautious, never a dangerous allow). Symlinks are likewise not resolved.
 
 export CLAUDE_HOOK_NAME="protect-files"
 source "$(dirname "$0")/lib.sh"

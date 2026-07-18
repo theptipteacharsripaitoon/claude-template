@@ -105,13 +105,18 @@ done
 exit 0
 ```
 
+> This recipe uses raw substring matching (`*"$p"*`), which false-positives
+> (`config.environment.ts` matches `.env`). The **shipped** `protect-files.sh`
+> matches exact basenames and slash-bounded path segments instead, and splits
+> deny (secrets/keys) from ask (CI/infra/lockfiles). Copy the shipped hook.
+
 Settings:
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh" }
         ]
@@ -130,15 +135,15 @@ Lint and format run no matter what — no "the agent forgot" failure mode.
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path' | xargs -r npx prettier --write"
+            "command": "jq -r '.tool_input.file_path' | xargs -rd '\\n' npx prettier --write"
           },
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path' | xargs -r npx eslint --fix --no-error-on-unmatched-pattern"
+            "command": "jq -r '.tool_input.file_path' | xargs -rd '\\n' npx eslint --fix --no-error-on-unmatched-pattern"
           }
         ]
       }
@@ -146,6 +151,10 @@ Lint and format run no matter what — no "the agent forgot" failure mode.
   }
 }
 ```
+
+> A bare `xargs` word-splits a path with spaces; `-d '\n'` splits only on
+> newlines. For paths that could contain a newline, emit NUL-delimited output
+> (`jq -j`) and use `xargs -0`. Kept illustrative here.
 
 ### Recipe 4: Block secrets in any write
 
@@ -190,6 +199,12 @@ pnpm typecheck && pnpm lint && pnpm test --run || {
   exit 2
 }
 ```
+
+> A blocking Stop hook MUST guard against re-entry: when Claude continues because
+> this hook blocked, the next Stop carries `stop_hook_active:true`. Without an
+> early `exit 0` on that flag, blocking mode can loop the session. Detect the git
+> work tree with `git rev-parse --is-inside-work-tree` (not `[[ -d .git ]]`, which
+> fails in linked worktrees). The **shipped** `verify-done.sh` does both — copy it.
 
 ```json
 {
