@@ -4,6 +4,11 @@
 #   claude-init <project-name>            # creates $HOME/projects/<name>
 #   CLAUDE_PROJECTS_DIR=/foo claude-init <name>   # custom destination root
 #   CLAUDE_TEMPLATE_DIR=/bar claude-init <name>   # template cloned elsewhere
+#
+# Failure-atomic: the project is assembled and validated in a temporary
+# sibling directory and only renamed to <name> after the hook installer
+# succeeds. A failed bootstrap leaves no destination, no temp dir, and the
+# caller's working directory untouched (all cd's happen in a subshell).
 
 claude-init() {
   local TEMPLATE="${CLAUDE_TEMPLATE_DIR:-$HOME/Claude_Project/main_template}"
@@ -17,8 +22,26 @@ claude-init() {
     return 1
   fi
 
-  if [[ ! -d "$TEMPLATE/.claude" ]]; then
-    echo "✗ Template not found at $TEMPLATE"
+  # The name must be a single safe path component — a separator or a relative
+  # special name could escape DEST_ROOT (e.g. '../escape').
+  case "$name" in
+    */* | *\\* | . | .. | -*)
+      echo "✗ Invalid project name '$name' — use a single folder name (no / or \\, not . or .., no leading -)."
+      return 1
+      ;;
+  esac
+
+  # Validate EVERY required template source before creating anything: a
+  # template missing CLAUDE.md or the root protections must fail up front,
+  # not produce a half-usable project that reports success.
+  local missing=()
+  [[ -f "$TEMPLATE/CLAUDE.md" ]]                 || missing+=("CLAUDE.md")
+  [[ -d "$TEMPLATE/.claude" ]]                   || missing+=(".claude/")
+  [[ -f "$TEMPLATE/.claude/hooks/install.sh" ]]  || missing+=(".claude/hooks/install.sh")
+  [[ -f "$TEMPLATE/.gitignore" ]]                || missing+=(".gitignore")
+  [[ -f "$TEMPLATE/.gitattributes" ]]            || missing+=(".gitattributes")
+  if (( ${#missing[@]} > 0 )); then
+    echo "✗ Template at $TEMPLATE is incomplete — missing: ${missing[*]}"
     echo "  Set up the template first (see HOW-TO.md Phase 2)."
     return 1
   fi
@@ -29,21 +52,36 @@ claude-init() {
     return 1
   fi
 
-  mkdir -p "$dest" && cd "$dest" || return 1
+  mkdir -p "$DEST_ROOT" || return 1
 
-  cp "$TEMPLATE/CLAUDE.md" ./
-  cp -r "$TEMPLATE/.claude" ./
+  # Build in a temp SIBLING (same filesystem) so the final rename is atomic.
+  local tmp
+  tmp=$(mktemp -d "$DEST_ROOT/.claude-init.XXXXXX") || return 1
 
-  # Copy root protections so generated projects inherit them (without these,
+  # .gitignore/.gitattributes are required root protections: without them,
   # `git add -A` below would stage .env / machine-local state, and .sh hooks
-  # could be checked out CRLF on Windows and break bash).
-  [[ -f "$TEMPLATE/.gitignore" ]] && cp "$TEMPLATE/.gitignore" ./
-  [[ -f "$TEMPLATE/.gitattributes" ]] && cp "$TEMPLATE/.gitattributes" ./
-
-  if ! bash .claude/hooks/install.sh; then
-    echo "✗ Hook install failed. Project at $dest may be incomplete."
+  # could be checked out CRLF on Windows and break bash.
+  if ! (
+    set -e
+    cp "$TEMPLATE/CLAUDE.md" "$tmp/"
+    cp -r "$TEMPLATE/.claude" "$tmp/"
+    cp "$TEMPLATE/.gitignore" "$tmp/"
+    cp "$TEMPLATE/.gitattributes" "$tmp/"
+    cd "$tmp"
+    bash .claude/hooks/install.sh
+  ); then
+    rm -rf "$tmp"
+    echo "✗ Bootstrap failed — cleaned up; nothing was created at $dest."
     return 1
   fi
+
+  if ! mv "$tmp" "$dest"; then
+    rm -rf "$tmp"
+    echo "✗ Could not move the finished project into $dest."
+    return 1
+  fi
+
+  cd "$dest" || return 1
 
   echo ""
   echo "✅ Project '$name' bootstrapped at $dest"
