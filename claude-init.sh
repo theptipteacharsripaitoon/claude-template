@@ -61,6 +61,9 @@ claude-init() {
   # .gitignore/.gitattributes are required root protections: without them,
   # `git add -A` below would stage .env / machine-local state, and .sh hooks
   # could be checked out CRLF on Windows and break bash.
+  # install.sh MUST be the last command in this subshell: because the subshell
+  # is the operand of `if !`, bash ignores `set -e` inside it, so failure
+  # propagation relies on install.sh's status being the subshell's status.
   if ! (
     set -e
     cp "$TEMPLATE/CLAUDE.md" "$tmp/"
@@ -74,6 +77,18 @@ claude-init() {
     echo "✗ Bootstrap failed — cleaned up; nothing was created at $dest."
     return 1
   fi
+
+  # Strip machine-local Claude state that a `cp -r .claude` would otherwise
+  # carry over from the template checkout (another dev's logs, a session's
+  # worktrees, local settings, cleanup planning artifacts). Done on the success
+  # path, before publishing, so a failed bootstrap's cleanup is unaffected. These
+  # are the same paths .gitignore excludes; seed-repo.sh prunes worktrees/logs too.
+  # install.sh's functional self-tests write .claude/logs/, so prune after it ran.
+  rm -rf "$tmp/.claude/worktrees" \
+         "$tmp/.claude/logs" \
+         "$tmp/.claude/settings.local.json" \
+         "$tmp/.claude/CLEANUP_PLAN.md" \
+         "$tmp/.claude/CLEANUP_EXECUTION.md"
 
   if ! mv "$tmp" "$dest"; then
     rm -rf "$tmp"

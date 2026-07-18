@@ -1,6 +1,7 @@
 # Machine-local Claude Code state — never commit.
 .claude/settings.local.json
 .claude/logs/
+.claude/worktrees/
 .claude/CLEANUP_PLAN.md
 .claude/CLEANUP_EXECUTION.md
 
