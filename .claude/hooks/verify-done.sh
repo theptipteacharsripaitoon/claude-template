@@ -21,13 +21,20 @@ fi
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 
 # Detect uncommitted code changes that look "real" (not just docs/whitespace).
-if ! command -v git >/dev/null 2>&1 || [[ ! -d .git ]]; then
-  exit 0  # No git, nothing to check.
+# Use `git rev-parse`, NOT `[[ -d .git ]]`: in a linked worktree `.git` is a
+# FILE (a gitdir pointer), so the directory test wrongly exits here and disables
+# the hook — and Claude Code runs sessions inside .claude/worktrees/, so that is
+# the common case, not an edge case.
+if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  exit 0  # Not a git work tree, nothing to check.
 fi
 
+# --untracked-files=all so an untracked code file inside a NEW directory is
+# listed individually (`newdir/mod.py`), not collapsed to `newdir/` (which ends
+# in `/` and would slip past the extension filter below).
 # grep -c exits 1 when nothing matches; without `|| true`, lib.sh's
 # `set -euo pipefail` kills the hook with exit 1 on every CLEAN stop.
-CHANGED=$(git status --porcelain 2>/dev/null | grep -cE '\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|sql|sh)$' || true)
+CHANGED=$(git status --porcelain --untracked-files=all 2>/dev/null | grep -cE '\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|cs|cpp|c|h|sql|sh)$' || true)
 
 if [[ "$CHANGED" == "0" ]]; then
   exit 0  # No code changes; stopping is fine.
@@ -37,7 +44,11 @@ fi
 if [[ "${CLAUDE_VERIFY_BLOCK:-0}" != "1" ]]; then
   echo "" >&2
   echo "📋 Definition of Done check (CLAUDE.md §16):" >&2
-  echo "   $CHANGED code file(s) changed in this session." >&2
+  # "uncommitted", not "changed in this session": this reads the working tree,
+  # so it counts pre-existing dirty files too and cannot see changes already
+  # committed during the session. True session attribution needs a SessionStart
+  # baseline, which this hook deliberately does not maintain.
+  echo "   $CHANGED code file(s) with uncommitted changes." >&2
   echo "   Before declaring done, confirm:" >&2
   echo "     [ ] tests run and observed passing" >&2
   echo "     [ ] linter, formatter, type-checker pass" >&2
