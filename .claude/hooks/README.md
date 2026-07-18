@@ -18,10 +18,10 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf`, force-push, `terraform apply`, package installs, etc. | Hard block (exit 2) |
-| `protect-files.sh` | PreToolUse: Edit/Write | Blocks edits to `.env*`, lockfiles, CI configs, infra, migrations | Hard block (exit 2) |
-| `scan-secrets.sh` | PreToolUse: Edit/Write | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
-| `check-diff-size.sh` | PreToolUse: Edit/Write | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf`, force-push, `terraform apply`, etc.; **asks** for dependency installs | Hard block (exit 2) / ask |
+| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets (`.env*`, credentials, `.git/`) → hard block; CI/infra/migrations/lockfiles/settings/hooks → **ask** | Deny / ask |
+| `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
+| `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
 | `verify-done.sh` | Stop | Reminds about Definition of Done if code changed | Reminder / block |
 
 ## Override (when you genuinely need to bypass)
@@ -30,10 +30,10 @@ A blocked action is sometimes the correct one (a real `rm -rf` to clean a temp d
 
 ```bash
 # Bypass one specific hook for the next Claude session
-CLAUDE_HOOK_OVERRIDE=block-destructive  claude code
+CLAUDE_HOOK_OVERRIDE=block-destructive  claude
 
 # Bypass any hook (use only when you understand the risk)
-CLAUDE_HOOK_OVERRIDE=all                claude code
+CLAUDE_HOOK_OVERRIDE=all                claude
 ```
 
 Every override is recorded to `.claude/logs/hooks.log` with timestamp and which hook was bypassed. If the team starts setting `CLAUDE_HOOK_OVERRIDE=all` in their shell rc, the hooks are dead — review override frequency periodically.
@@ -113,11 +113,13 @@ export CLAUDE_VERIFY_BLOCK=1
 This runs typecheck/lint/test on every Stop event. Heavy but catches "I'm done" claims that aren't.
 
 ### Whitelist a fake-looking secret
-If `scan-secrets.sh` blocks a legitimate test fixture, add a fake marker to the value:
+If `scan-secrets.sh` blocks a legitimate test fixture, embed a fake marker **inside the value**:
 ```ts
-const TEST_API_KEY = "sk-EXAMPLE-fake-test-1234567890abcdef";  // contains EXAMPLE
+const TEST_API_KEY = "sk-EXAMPLE-fake-test-1234567890abcdef";  // marker is in the value
 ```
-The scanner skips strings on lines containing `EXAMPLE`, `fake-`, `test-`, `dummy-`, `placeholder`, `XXXX`, etc.
+The scanner skips a match only when the **matched value itself** contains `EXAMPLE`, `fake-`,
+`test-`, `dummy-`, `placeholder`, `XXXX`, etc. A marker in a nearby comment does **not** suppress
+a real secret (that was a bypass) — put the marker in the value.
 
 ### Disable a hook temporarily
 Comment it out in `.claude/settings.json` rather than deleting — easier to reinstate.
