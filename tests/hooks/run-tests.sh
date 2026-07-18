@@ -124,6 +124,22 @@ if [[ "$got" == 0 ]] && ! grep -q 'checks passed' "$SCRATCH/vd5.txt" && grep -qi
 echo "== install.sh: counter must survive set -e =="
 if grep -q '((FAIL++))' "$HOOKS/install.sh"; then FAIL=$((FAIL+1)); echo "FAIL INST1  install.sh still uses ((FAIL++)) — dies under set -e on first failing test"; else PASS=$((PASS+1)); echo "PASS INST1  no set -e-fatal increments"; fi
 
+echo "== claude-init: generated projects inherit root protections =="
+# Bootstrap a project from THIS repo as the template and assert the protection
+# files are copied and would ignore machine-local/secret files.
+BOOT="$SCRATCH/boot"; mkdir -p "$BOOT"
+( set +e
+  # shellcheck disable=SC1090
+  source "$REPO/claude-init.sh"
+  CLAUDE_TEMPLATE_DIR="$REPO" CLAUDE_PROJECTS_DIR="$BOOT" claude-init gen >/dev/null 2>&1
+)
+GENP="$BOOT/gen"
+if [[ -f "$GENP/.gitignore" && -f "$GENP/.gitattributes" ]]; then PASS=$((PASS+1)); echo "PASS BOOT1  .gitignore + .gitattributes copied"; else FAIL=$((FAIL+1)); echo "FAIL BOOT1  generated project missing .gitignore/.gitattributes"; fi
+( cd "$GENP" 2>/dev/null && git init -q 2>/dev/null && printf 'SECRET=x\n' > .env && git add -A 2>/dev/null
+  if git status --porcelain .env 2>/dev/null | grep -q .; then echo STAGED; else echo IGNORED; fi ) > "$SCRATCH/boot_env.txt" 2>/dev/null
+if grep -q IGNORED "$SCRATCH/boot_env.txt"; then PASS=$((PASS+1)); echo "PASS BOOT2  .env is ignored in generated project"; else FAIL=$((FAIL+1)); echo "FAIL BOOT2  .env would be staged in generated project"; fi
+if [[ ! -e "$GENP/reports" && ! -e "$GENP/external-review-v2.md" ]]; then PASS=$((PASS+1)); echo "PASS BOOT3  audit reports/external reviews not copied"; else FAIL=$((FAIL+1)); echo "FAIL BOOT3  template audit artifacts leaked into generated project"; fi
+
 echo "== settings.json: matcher covers current editing tools =="
 if grep -q 'MultiEdit' "$REPO/.claude/settings.json"; then FAIL=$((FAIL+1)); echo "FAIL SET1   matcher still lists MultiEdit (tool removed in current Claude Code)"; else PASS=$((PASS+1)); echo "PASS SET1   no stale MultiEdit matcher"; fi
 if grep -q 'NotebookEdit' "$REPO/.claude/settings.json"; then PASS=$((PASS+1)); echo "PASS SET2   NotebookEdit matched"; else FAIL=$((FAIL+1)); echo "FAIL SET2   NotebookEdit not matched — notebook edits bypass file hooks"; fi
