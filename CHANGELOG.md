@@ -4,6 +4,57 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ## [Unreleased]
 
+### Security (third cycle)
+- **block-destructive**: closed measured false negatives — `rm` now denies every
+  recursive flag spelling (`-fr`, split `-r -f`, `--recursive --force`, capital
+  `-R`) and a quoted `"$HOME"` target; `git clean` force+directory flags match in
+  either order, clustered or split; SQL destruction (`drop table`, `truncate
+  table`, `delete from …;`) matches case-insensitively. Deny-widening only.
+- **block-destructive**: dependency **remove/uninstall** and **update/upgrade**
+  commands (incl. `pip install -U/--upgrade`, `go get`) now emit the CLAUDE.md §2
+  approval ask; lockfile/manifest restores (`npm ci`, bare installs, `pip
+  install -r`, `uv sync`, …) deliberately stay allowed.
+
+### Fixed (third cycle)
+- **verify-done (P0)**: blocking mode (`CLAUDE_VERIFY_BLOCK=1`) died with exit 1
+  before running any check — a bare `((RAN++))` returns status 1 at zero under
+  `set -e`. Counters are now POSIX assignments; a missing toolchain (e.g.
+  `Cargo.toml` without `cargo`) is skipped with a note instead of being counted
+  as a failed check.
+- **protect-files**: the approval ask is now jq-built JSON — a protected basename
+  containing a quote, tab, or newline no longer corrupts the payload (which
+  silently dropped the ask). block-destructive's ask JSON got the same treatment.
+- **claude-init**: name-safe and failure-atomic — traversal names (`../x`, `a/b`)
+  are rejected, all required template sources are validated up front, the project
+  is assembled in a temp sibling and renamed into place only after the installer
+  succeeds; failures clean up and leave the caller's cwd untouched.
+
+### Added (third cycle)
+- Executable skill-routing harness: `tests/skills/routing/seed-repo.sh` seeds a
+  domain-representative repo per fixture case; `run_eval.py` runs each prompt N×
+  through headless `claude -p`, scores recall/precision/conflicts/stability, and
+  writes machine-readable results to `tests/skills/results/`. Fixture format
+  gains stable `id`s and `allowed_companions`.
+- Hook regression cases (suite 50 → 107): rm/clean/SQL variants with allow
+  guards, dependency ask/restore matrix, jq-validated ask JSON on hostile
+  basenames, real passing/failing Stop-hook checkers (incl. polyglot and
+  missing-toolchain), bootstrap traversal/atomicity/cwd, settings timeouts.
+- Explicit 10 s `timeout` on the PreToolUse validators in `.claude/settings.json`
+  (Stop hook intentionally unset — blocking mode runs real test suites).
+- Third-cycle audit reports (`reports/claude-independent-audit-v3.md`,
+  `reports/review-adjudication-v3.md`).
+
+### Changed (third cycle)
+- **CI**: pinned runner image (`ubuntu-24.04`), SHA-pinned `actions/setup-python`
+  with Python 3.12, checksum-verified ShellCheck v0.10.0, and a concurrency group
+  that cancels superseded runs; ShellCheck now also lints `claude-init.sh` and
+  the routing seed script. (Execution still blocked by the account billing lock —
+  owner action.)
+- hooks README synced with implementation: ask tiers incl. dependency changes,
+  component-based protected-path matching (stale `PROTECTED_PATTERNS` wording
+  removed), scanner detection boundary + marker-skip logging, Stop-hook exit
+  semantics, validator timeouts.
+
 ### Security
 - **scan-secrets**: closed two same-pattern bypasses — a real secret no longer
   slips through behind a fixture on an earlier line, nor when its own line
