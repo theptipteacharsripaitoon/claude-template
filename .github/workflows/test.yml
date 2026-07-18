@@ -3,11 +3,16 @@ on:
   push:
   pull_request:
 
+# Least privilege (ci-review skill item 2): this workflow only reads the repo.
+permissions:
+  contents: read
+
 jobs:
   hooks-and-catalog:
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # bound the job (ci-review skill item 7)
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8   # v5.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Hook regression suite
         run: bash tests/hooks/run-tests.sh
       - name: Hook installer end-to-end (embedded functional tests)
@@ -16,5 +21,5 @@ jobs:
         run: shellcheck .claude/hooks/*.sh tests/hooks/run-tests.sh
       - name: Skill catalog consistency
         run: |
-          python -m pip install --quiet pyyaml
+          python -m pip install --quiet 'pyyaml==6.0.2'
           python tests/skills/check_catalog.py
