@@ -42,28 +42,32 @@ RESULTS_DIR = HERE.parent / "results"
 SEED = HERE / "seed-repo.sh"
 RUN_TIMEOUT_S = 300
 
-CLUSTER_KEYS = [
-    "layout_cluster",
-    "review_cluster",
-    "git_hygiene_scope",
-    "security_cluster",
-    "engine_specificity",
-    "airflow_authoring_vs_review",
-]
+# Every top-level YAML key is a cluster of cases EXCEPT this one (run metadata),
+# so a new cluster is discovered automatically — no hardcoded list to update.
+NON_CLUSTER_KEYS = {"evaluated_runs"}
 
 
 def load_cases() -> list[dict]:
     with open(FIXTURE, encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
     cases = []
-    for cluster in CLUSTER_KEYS:
-        for case in doc.get(cluster) or []:
+    seen: dict[str, str] = {}  # id -> cluster, to reject duplicates
+    for cluster, entries in doc.items():
+        if cluster in NON_CLUSTER_KEYS or not isinstance(entries, list):
+            continue
+        for case in entries:
             if "id" not in case:
-                sys.exit(f"fixture case without id in {cluster}: {case['prompt']!r}")
+                sys.exit(f"fixture case without id in {cluster}: {case.get('prompt')!r}")
+            cid = case["id"]
+            if cid in seen:
+                sys.exit(
+                    f"duplicate case id {cid!r} in clusters {seen[cid]!r} and {cluster!r}"
+                )
+            seen[cid] = cluster
             cases.append(
                 {
                     "cluster": cluster,
-                    "id": case["id"],
+                    "id": cid,
                     "prompt": case["prompt"],
                     "must_load": case.get("must_load") or [],
                     "must_not_load": case.get("must_not_load") or [],
@@ -71,6 +75,18 @@ def load_cases() -> list[dict]:
                 }
             )
     return cases
+
+
+def claude_version(claude: str) -> str | None:
+    """Best-effort `claude --version` -> the version token, or None."""
+    try:
+        out = subprocess.run(
+            [claude, "--version"], capture_output=True, text=True, timeout=30
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    # Output looks like "2.1.214 (Claude Code)"; take the leading version token.
+    return out.split()[0] if out else None
 
 
 def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
@@ -202,6 +218,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--only", help="run a single case id")
+    ap.add_argument(
+        "--min-recall", type=float, help="exit non-zero if recall is below this"
+    )
+    ap.add_argument(
+        "--max-conflict", type=float, help="exit non-zero if conflict_rate exceeds this"
+    )
+    ap.add_argument(
+        "--fail-on-miss",
+        action="store_true",
+        help="exit non-zero if any non-errored run is a MISS (required skill not loaded or a forbidden one loaded)",
+    )
     args = ap.parse_args()
 
     claude = shutil.which("claude")
@@ -216,7 +243,15 @@ def main() -> None:
             sys.exit(f"no case with id {args.only}")
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M")
+    # Seconds precision + an explicit collision guard so a same-timeframe rerun
+    # never silently overwrites a prior result file.
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    suffix = ""
+    n = 1
+    while (RESULTS_DIR / f"routing-{stamp}{suffix}.jsonl").exists():
+        suffix = f"-{n}"
+        n += 1
+    stamp = f"{stamp}{suffix}"
     out_jsonl = RESULTS_DIR / f"routing-{stamp}.jsonl"
     out_summary = RESULTS_DIR / f"routing-{stamp}-summary.json"
 
@@ -238,9 +273,14 @@ def main() -> None:
                 )
 
     summary = summarize(rows)
+    # Prefer the version reported in the stream; fall back to `claude --version`
+    # so provenance is captured automatically instead of hand-entered.
+    cc_version = next((r["cc_version"] for r in rows if r["cc_version"]), None)
+    if not cc_version:
+        cc_version = claude_version(claude)
     meta = {
         "date": stamp,
-        "cc_version": next((r["cc_version"] for r in rows if r["cc_version"]), None),
+        "cc_version": cc_version,
         "model": next((r["model"] for r in rows if r["model"]), None),
         "runs_per_case": args.runs,
         "results_file": out_jsonl.name,
@@ -249,6 +289,25 @@ def main() -> None:
     with open(out_summary, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2, ensure_ascii=False)
     print(json.dumps(meta, indent=2, ensure_ascii=False))
+
+    # Optional gates: exit non-zero so a routing regression can fail a check.
+    failures = []
+    if args.min_recall is not None and (summary["recall"] or 0) < args.min_recall:
+        failures.append(f"recall {summary['recall']} < min {args.min_recall}")
+    if args.max_conflict is not None and (summary["conflict_rate"] or 0) > args.max_conflict:
+        failures.append(
+            f"conflict_rate {summary['conflict_rate']} > max {args.max_conflict}"
+        )
+    if args.fail_on_miss:
+        misses = [
+            r["case_id"]
+            for r in rows
+            if not r["is_error"] and (not r["required_ok"] or r["forbidden_hit"])
+        ]
+        if misses:
+            failures.append(f"{len(misses)} MISS run(s): {sorted(set(misses))}")
+    if failures:
+        sys.exit("routing gate failed: " + "; ".join(failures))
 
 
 if __name__ == "__main__":
