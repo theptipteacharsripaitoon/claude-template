@@ -8,6 +8,9 @@
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOKS="$REPO/.claude/hooks"
 SCRATCH="$(mktemp -d)"
+# Clean the scratch tree on exit (even on failure) so repeated runs do not
+# accumulate temp directories.
+trap 'rm -rf "$SCRATCH"' EXIT
 export CLAUDE_PROJECT_DIR="$SCRATCH"
 PASS=0; FAIL=0
 
@@ -307,6 +310,27 @@ rc=0
   CLAUDE_TEMPLATE_DIR="$REPO" CLAUDE_PROJECTS_DIR="$BOOT" claude-init 'my proj' >/dev/null 2>&1
 ) || rc=$?
 if [[ "$rc" == 0 && -f "$BOOT/my proj/CLAUDE.md" && -d "$BOOT/my proj/.claude" ]]; then PASS=$((PASS+1)); echo "PASS BOOT8  space-containing name bootstraps"; else FAIL=$((FAIL+1)); echo "FAIL BOOT8  'my proj' should bootstrap cleanly (rc=$rc)"; fi
+# BOOT9: machine-local Claude state in the template must NOT leak into the
+# generated project (D6). Build a template that mirrors the repo but carries
+# local state, bootstrap from it, assert none of the local paths came across.
+TLOCAL="$SCRATCH/tmpl-local"; mkdir -p "$TLOCAL"
+cp "$REPO/CLAUDE.md" "$TLOCAL/"; cp "$REPO/.gitignore" "$TLOCAL/"; cp "$REPO/.gitattributes" "$TLOCAL/"
+cp -r "$REPO/.claude" "$TLOCAL/.claude"
+printf '{"local":true}\n' > "$TLOCAL/.claude/settings.local.json"
+mkdir -p "$TLOCAL/.claude/logs" && printf 'log\n' > "$TLOCAL/.claude/logs/hooks.log"
+mkdir -p "$TLOCAL/.claude/worktrees/br" && printf 'stray\n' > "$TLOCAL/.claude/worktrees/br/f.txt"
+printf '# plan\n' > "$TLOCAL/.claude/CLEANUP_PLAN.md"
+printf '# exec\n' > "$TLOCAL/.claude/CLEANUP_EXECUTION.md"
+( set +e
+  # shellcheck disable=SC1090,SC1091
+  source "$REPO/claude-init.sh"
+  CLAUDE_TEMPLATE_DIR="$TLOCAL" CLAUDE_PROJECTS_DIR="$BOOT" claude-init genlocal >/dev/null 2>&1
+)
+GL="$BOOT/genlocal"; leak9=""
+for lp in .claude/settings.local.json .claude/logs .claude/worktrees .claude/CLEANUP_PLAN.md .claude/CLEANUP_EXECUTION.md; do
+  [[ -e "$GL/$lp" ]] && leak9="$leak9 $lp"
+done
+if [[ -f "$GL/CLAUDE.md" && -z "$leak9" ]]; then PASS=$((PASS+1)); echo "PASS BOOT9  machine-local state excluded from generated project"; else FAIL=$((FAIL+1)); echo "FAIL BOOT9  local state leaked:$leak9 (project built=$([[ -f "$GL/CLAUDE.md" ]] && echo yes || echo no))"; fi
 
 echo "== settings.json: matcher covers current editing tools =="
 if grep -q 'MultiEdit' "$REPO/.claude/settings.json"; then FAIL=$((FAIL+1)); echo "FAIL SET1   matcher still lists MultiEdit (tool removed in current Claude Code)"; else PASS=$((PASS+1)); echo "PASS SET1   no stale MultiEdit matcher"; fi
@@ -318,6 +342,102 @@ if jq -e '[.hooks.PreToolUse[].hooks[] | select((.timeout // null) == null)] | l
 else
   FAIL=$((FAIL+1)); echo "FAIL SET3   PreToolUse validator(s) missing an explicit timeout"
 fi
+
+echo "== verify-done: real linked worktree (.git is a FILE) =="
+# D1 regression: a linked worktree's .git is a file, not a dir. The Stop hook
+# must still detect uncommitted code and emit the reminder — not silently exit.
+WTMAIN="$SCRATCH/wt-main"; mkdir -p "$WTMAIN"
+( cd "$WTMAIN" && git init -q . && git config core.longpaths true \
+  && printf 'x=1\n' > a.py && git add a.py \
+  && git -c user.email=t@t -c user.name=t commit -qm init \
+  && git worktree add -q "$SCRATCH/wt-linked" -b feature >/dev/null 2>&1 )
+# Sanity: confirm .git really is a file in the linked worktree.
+if [[ -f "$SCRATCH/wt-linked/.git" ]]; then PASS=$((PASS+1)); echo "PASS WT0    linked worktree .git is a file"; else FAIL=$((FAIL+1)); echo "FAIL WT0    expected .git file in linked worktree"; fi
+printf 'x=2\n' > "$SCRATCH/wt-linked/a.py"
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/wt-linked" bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/wt.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -q 'Definition of Done' "$SCRATCH/wt.txt"; then PASS=$((PASS+1)); echo "PASS WT1    dirty linked worktree -> reminder (exit 0)"; else FAIL=$((FAIL+1)); echo "FAIL WT1    linked worktree Stop must remind (got exit $got, reminder=$(grep -c 'Definition of Done' "$SCRATCH/wt.txt"))"; fi
+# Clean the worktree -> no reminder.
+( cd "$SCRATCH/wt-linked" && git checkout -q -- a.py )
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/wt-linked" bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/wt2.txt" || got=$?
+if [[ "$got" == 0 ]] && ! grep -q 'Definition of Done' "$SCRATCH/wt2.txt"; then PASS=$((PASS+1)); echo "PASS WT2    clean linked worktree -> no reminder"; else FAIL=$((FAIL+1)); echo "FAIL WT2    clean worktree must not remind (got exit $got)"; fi
+
+echo "== verify-done: untracked code file inside a NEW untracked dir is counted =="
+# D2 regression: default porcelain collapses new dirs to '?? newdir/', missing
+# the .py inside. --untracked-files=all must surface it.
+UNT="$SCRATCH/untdir"; mkdir -p "$UNT"
+( cd "$UNT" && git init -q . && printf 'x=1\n' > seed.py && git add seed.py \
+  && git -c user.email=t@t -c user.name=t commit -qm init \
+  && mkdir -p brandnew && printf 'y=1\n' > brandnew/mod.py )
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$UNT" bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/unt.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -q 'Definition of Done' "$SCRATCH/unt.txt"; then PASS=$((PASS+1)); echo "PASS VD11   untracked .py in new dir triggers reminder"; else FAIL=$((FAIL+1)); echo "FAIL VD11   untracked .py in new dir must be counted (got exit $got)"; fi
+
+echo "== scan-secrets: NO secret substring in stdout/stderr/log =="
+# D4 regression: the hook must not print any prefix/preview of the matched value.
+export CLAUDE_PROJECT_DIR="$SCRATCH/ss-out"; mkdir -p "$SCRATCH/ss-out"
+SEC_AWS="AKIA""ZZ34567890QRSTUV"   # real-shape, no marker, constructed at runtime
+printf '{"tool_name":"Write","tool_input":{"content":%s}}' "$(printf 'k = "%s"' "$SEC_AWS" | jq -Rs .)" \
+  | bash "$HOOKS/scan-secrets.sh" >"$SCRATCH/ss_out.txt" 2>"$SCRATCH/ss_err.txt" || true
+LOGF="$SCRATCH/ss-out/.claude/logs/hooks.log"
+# Probe the SECRET material (the 16 random chars), not the public 'AKIA' scheme
+# prefix — that prefix legitimately appears inside the regex pattern name.
+leak=0
+for probe in "$SEC_AWS" "${SEC_AWS:0:8}" "${SEC_AWS:4:8}" "${SEC_AWS: -8}"; do
+  grep -qF "$probe" "$SCRATCH/ss_out.txt" 2>/dev/null && leak=1
+  grep -qF "$probe" "$SCRATCH/ss_err.txt" 2>/dev/null && leak=1
+  [[ -f "$LOGF" ]] && grep -qF "$probe" "$LOGF" 2>/dev/null && leak=1
+done
+if [[ "$leak" == 0 ]]; then PASS=$((PASS+1)); echo "PASS SS11   no secret substring in stdout/stderr/log"; else FAIL=$((FAIL+1)); echo "FAIL SS11   secret substring leaked to output/log"; fi
+export CLAUDE_PROJECT_DIR="$SCRATCH"
+
+echo "== logging: hostile field cannot inject a second log record =="
+# D5 regression: a file path with an embedded newline must not forge a log line.
+export CLAUDE_PROJECT_DIR="$SCRATCH/loginj"; mkdir -p "$SCRATCH/loginj"
+EVILP=$'/repo/migrations/a\n2099-01-01T00:00:00Z\tBLOCK\tfake\tfake\tinjected\t.sql'
+printf '{"tool_name":"Write","tool_input":{"file_path":%s}}' "$(printf '%s' "$EVILP" | jq -Rs .)" \
+  | bash "$HOOKS/protect-files.sh" >/dev/null 2>&1 || true
+LOGI="$SCRATCH/loginj/.claude/logs/hooks.log"
+lines=$(wc -l < "$LOGI" 2>/dev/null | tr -d ' ')
+inj=$(grep -c '^2099-01-01' "$LOGI" 2>/dev/null || true)
+if [[ "$lines" == 1 && "$inj" == 0 ]]; then PASS=$((PASS+1)); echo "PASS LOG1   hostile path logged as one escaped record"; else FAIL=$((FAIL+1)); echo "FAIL LOG1   log record injection (lines=$lines injected=$inj)"; fi
+export CLAUDE_PROJECT_DIR="$SCRATCH"
+
+echo "== block-destructive: prefix / end-of-options rm bypasses now blocked =="
+t BD40 2 block-destructive.sh "$(cmd '/bin/rm -rf /')"
+t BD41 2 block-destructive.sh "$(cmd '\rm -rf /')"
+t BD42 2 block-destructive.sh "$(cmd 'rm -rf -- /')"
+t BD43 2 block-destructive.sh "$(cmd 'rm --recursive --force -- /')"
+t BD44 0 block-destructive.sh "$(cmd 'rm -rf build/')"          # still allowed (safe target)
+t BD45 0 block-destructive.sh "$(cmd 'confirm the release')"    # 'rm' inside a word must not match
+echo "== block-destructive: schema-qualified / bracketed DELETE, DROP object variants =="
+t BD46 2 block-destructive.sh "$(cmd 'DELETE FROM dbo.Users;')"
+t BD47 2 block-destructive.sh "$(cmd 'DELETE FROM [dbo].[Users];')"
+t BD48 0 block-destructive.sh "$(cmd 'DELETE FROM dbo.Users WHERE id = 1;')"   # WHERE-guarded stays allowed
+t BD49 2 block-destructive.sh "$(cmd 'DROP VIEW dbo.v_users')"
+t BD50 2 block-destructive.sh "$(cmd 'DROP PROCEDURE dbo.p')"
+t BD51 2 block-destructive.sh "$(cmd 'DROP INDEX IX_x ON dbo.t')"
+echo "== block-destructive: force-push via +refspec =="
+t BD52 2 block-destructive.sh "$(cmd 'git push origin +main')"
+t BD53 2 block-destructive.sh "$(cmd 'git push origin +refs/heads/main')"
+t BD54 0 block-destructive.sh "$(cmd 'git push origin main')"   # plain push still allowed (normal perm flow)
+
+echo "== protect-files: private-key / credential files gated =="
+t PFK1 2 protect-files.sh "$(fp '/repo/id_rsa')"
+t PFK2 2 protect-files.sh "$(fp '/repo/certs/server.pem')"
+t PFK3 2 protect-files.sh "$(fp '/repo/tls.key')"
+t_ask PFK4 protect-files.sh "$(fp '/repo/.netrc')"
+t_ask PFK5 protect-files.sh "$(fp '/repo/.npmrc')"
+t_ask PFK6 protect-files.sh "$(fp '/repo/.pypirc')"
+echo "== protect-files: .env case-insensitive (same file on Windows/macOS) =="
+t PFC1 2 protect-files.sh "$(fp '/repo/.ENV')"
+t PFC2 2 protect-files.sh "$(fp '/repo/.Env.Local')"
+echo "== protect-files: composite actions, submodules, root infra =="
+t_ask PFI1 protect-files.sh "$(fp '/repo/.github/actions/build/action.yml')"
+t_ask PFI2 protect-files.sh "$(fp '/repo/.gitmodules')"
+t_ask PFI3 protect-files.sh "$(fp '/repo/main.tf')"
+t_ask PFI4 protect-files.sh "$(fp '/repo/modules/vpc/network.tf')"
+echo "== protect-files: still no substring false positives after additions =="
+t PFC3 0 protect-files.sh "$(fp '/repo/src/keyboard.ts')"       # '.key' substring must not match
+t PFC4 0 protect-files.sh "$(fp '/repo/src/environment.ts')"    # 'env' substring must not match
 
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
