@@ -12,7 +12,7 @@ plus the regression tests that keep the enforcement honest.
 | Engineering policy | [CLAUDE.md](CLAUDE.md) | Priorities, AI action boundaries, security, testing, git discipline (§0–§20) |
 | Skill library | [.claude/skills/](.claude/skills/INDEX.md) | 37 single-responsibility skills — cleanup, data engineering (SQL Server/SSIS/Airflow), Python/backend, AI/LLM, CI, frontend. Full catalog + dependency graph in [INDEX.md](.claude/skills/INDEX.md) |
 | Enforcement hooks | [.claude/hooks/](.claude/hooks/README.md) | Block destructive commands, protect sensitive files, scan secrets, warn on oversized diffs, remind on Definition of Done. Dependency installs prompt for approval instead of hard-failing |
-| Tests | [tests/](tests/) | 50-case hook regression suite + skill-catalog consistency checks + trigger-case evaluation fixtures |
+| Tests | [tests/](tests/) | 107-case hook regression suite + skill-catalog consistency checks + executable live skill-routing evaluation (fixtures, seed repos, runner, committed results) |
 | Enforcement design | [.claude/ENFORCEMENT.md](.claude/ENFORCEMENT.md) | The 5-layer defense model: prompts suggest, hooks enforce |
 
 ## Quick start

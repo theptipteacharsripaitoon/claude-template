@@ -18,11 +18,13 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf`, force-push, `terraform apply`, etc.; **asks** for dependency installs | Hard block (exit 2) / ask |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling), force-push, `terraform apply`, SQL destruction (case-insensitive), etc.; **asks** for dependency install/upgrade/remove (lockfile *restores* like `npm ci` stay allowed) | Hard block (exit 2) / ask |
 | `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets (`.env*`, credentials, `.git/`) → hard block; CI/infra/migrations/lockfiles/settings/hooks → **ask** | Deny / ask |
 | `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
 | `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
 | `verify-done.sh` | Stop | Reminds about Definition of Done if code changed | Reminder / block |
+
+The PreToolUse validators declare a 10 s `timeout` in `settings.json` (they finish in milliseconds; the docs default is 600 s). The Stop hook deliberately has **no** short timeout — blocking mode runs real test suites. Both `ask` decisions are emitted as jq-built JSON, so hostile filenames or future pattern edits cannot corrupt the payload.
 
 ## Override (when you genuinely need to bypass)
 
@@ -96,7 +98,7 @@ A change that breaks the smoke test in `install.sh` will fail loudly. A change t
 Most teams want to tune over the first 2–4 weeks. Common tweaks:
 
 ### Add or remove protected paths
-Edit `protect-files.sh`. The `PROTECTED_PATTERNS` array uses substring match against the full file path.
+Edit `protect-files.sh`. Matching is on exact basenames (`base_is`) and slash-bounded path segments (`has_segment`) — never raw substrings — so `config.environment.ts` is not mistaken for `.env` and `infrastructure/` is not mistaken for `infra/`. Add DENY rules for never-edit files, ASK rules for approve-in-chat files.
 
 ### Change diff-size thresholds
 Set in your shell (or CI):
@@ -111,6 +113,9 @@ The `verify-done.sh` hook is reminder-only by default. To make it block on faile
 export CLAUDE_VERIFY_BLOCK=1
 ```
 This runs typecheck/lint/test on every Stop event. Heavy but catches "I'm done" claims that aren't.
+Exit semantics: 0 = all discovered checks passed (or none could run — reported honestly, never
+as "passed"), 2 = at least one check failed. An ecosystem whose toolchain is missing (e.g.
+`Cargo.toml` with no `cargo` installed) is skipped with a note, not reported as a failure.
 
 ### Whitelist a fake-looking secret
 If `scan-secrets.sh` blocks a legitimate test fixture, embed a fake marker **inside the value**:
@@ -120,6 +125,14 @@ const TEST_API_KEY = "sk-EXAMPLE-fake-test-1234567890abcdef";  // marker is in t
 The scanner skips a match only when the **matched value itself** contains `EXAMPLE`, `fake-`,
 `test-`, `dummy-`, `placeholder`, `XXXX`, etc. A marker in a nearby comment does **not** suppress
 a real secret (that was a bypass) — put the marker in the value.
+
+Two boundaries to know:
+- **Marker skips are a deliberate false-negative path.** Every skipped fixture is logged as a
+  `WARN` line in `.claude/logs/hooks.log` — review those occasionally. If a *real* secret ever
+  contains a marker string, this hook alone will not catch it; that is one reason §7 also
+  requires a pre-commit/CI scanner (gitleaks, detect-secrets) as a second layer.
+- **The hook scans the content each edit inserts, not the reconstructed final file.** A secret
+  assembled across two separate edits is invisible to it; the pre-commit layer catches that.
 
 ### Disable a hook temporarily
 Comment it out in `.claude/settings.json` rather than deleting — easier to reinstate.

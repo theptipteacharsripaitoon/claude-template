@@ -134,7 +134,7 @@ override assertion. **SC2155** at line 8 (`export X="$(…)"`) — real ShellChe
 - **Structured decisions:** only block-destructive emits `permissionDecision`; the file hooks
   rely on exit 2. Consistent with current Claude Code hook semantics.
 
-## 2. Skill assessment (38 skills)
+## 2. Skill assessment (37 skills) *(erratum, third cycle: header originally mistyped "38"; `check_catalog.py` counts 37)*
 
 Descriptions are generally high quality, with explicit "Do NOT use for…" boundaries and
 authoring/review split (airflow/airflow-review, api-design/api-review, database-*/sql-layout, etc.).

@@ -17,14 +17,23 @@ fi
 # Each line is a separate regex. Be conservative — false positives are better
 # than missing a real disaster. Claude will surface a normal request to the
 # user when blocked, who can override by running the command themselves.
+# A recursive rm in ANY spelling: clustered (-rf, -fr, -Rf), split (-r -f),
+# or long (--recursive [--force]), with other flags interleaved — anchored at a
+# command position so substrings of other words (confirm, npm) can never match.
+# The dangerous-target patterns below append what the recursion aims at.
+RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*'
+RM_REC="(^|[[:space:];|&])rm[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+"
+
 # shellcheck disable=SC2016  # single quotes are intentional: these are regexes,
 # the literal '\$HOME' must NOT be shell-expanded.
+# Matched case-INSENSITIVELY (grep -i): SQL keywords arrive in any case, and a
+# lowercase 'drop table' is exactly as destructive as 'DROP TABLE'.
 DESTRUCTIVE_PATTERNS=(
   # Filesystem
-  'rm[[:space:]]+-rf?[[:space:]]+/'                       # rm -rf /
-  'rm[[:space:]]+-rf?[[:space:]]+\*'                      # rm -rf *
-  'rm[[:space:]]+-rf?[[:space:]]+\$HOME'                  # rm -rf $HOME
-  'rm[[:space:]]+-rf?[[:space:]]+~'                       # rm -rf ~
+  "${RM_REC}/"                                            # rm -rf /abs/path (any flag spelling)
+  "${RM_REC}\\*"                                          # rm -rf *
+  "${RM_REC}[\"']?\\\$HOME"                               # rm -rf $HOME (quoted or not)
+  "${RM_REC}~"                                            # rm -rf ~
   'rm[[:space:]]+--no-preserve-root'                      # explicit override
   'find[[:space:]].*-delete'                              # find ... -delete
   'shred[[:space:]]'                                      # shred
@@ -42,7 +51,10 @@ DESTRUCTIVE_PATTERNS=(
   'git[[:space:]]+push[[:space:]]+.*--force'              # force push
   'git[[:space:]]+push[[:space:]]+.*-f([[:space:]]|$)'    # short -f
   'git[[:space:]]+reset[[:space:]]+--hard'                # hard reset
-  'git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d'       # clean -fd
+  # clean needs BOTH -f and -d, in either order, same cluster or split
+  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*(f[a-zA-Z]*d|d[a-zA-Z]*f)'
+  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d'
+  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f'
   'git[[:space:]]+filter-branch'                          # history rewrite
   'git[[:space:]]+update-ref[[:space:]]+-d'               # delete ref
 
@@ -61,18 +73,23 @@ DESTRUCTIVE_PATTERNS=(
 
 )
 
-# Package managers (per CLAUDE.md §2: propose, don't install). These get an
-# interactive ASK (hookSpecificOutput.permissionDecision) instead of a hard
-# deny — installing a dependency is a legitimate action that needs the user's
-# yes, not a blocked one. Modern npm 5+ saves by default — match any
+# Package managers (per CLAUDE.md §2: install, upgrade, or remove — propose,
+# the user approves). These get an interactive ASK
+# (hookSpecificOutput.permissionDecision) instead of a hard deny — mutating the
+# dependency set is a legitimate action that needs the user's yes, not a
+# blocked one. RESTORE commands (npm ci / bare install, pip install -r,
+# uv sync, poetry/bundle/composer install) deliberately do NOT ask: they
+# reinstall an already-committed manifest/lockfile, which is not a new
+# supply-chain decision. Modern npm 5+ saves by default — match any
 # `npm install <pkg>`, not just --save.
 ASK_PATTERNS=(
+  # -- add / install a new package --
   'npm[[:space:]]+install[[:space:]]+[@a-zA-Z]'           # npm install <pkg> or @scope
   'npm[[:space:]]+i[[:space:]]+[@a-zA-Z]'                 # npm i <pkg> shorthand
   'yarn[[:space:]]+add[[:space:]]'
   'pnpm[[:space:]]+add[[:space:]]'
   'bun[[:space:]]+add[[:space:]]'                         # Bun (growing)
-  'pip[[:space:]]+install[[:space:]]+[^-]'                # pip install <pkg> (allows -e)
+  'pip[[:space:]]+install[[:space:]]+[^-]'                # pip install <pkg> (allows -e/-r)
   'pip3[[:space:]]+install[[:space:]]+[^-]'
   'poetry[[:space:]]+add[[:space:]]'
   'uv[[:space:]]+add[[:space:]]'                          # uv (modern Python)
@@ -80,10 +97,33 @@ ASK_PATTERNS=(
   'gem[[:space:]]+install[[:space:]]'                     # Ruby
   'composer[[:space:]]+require[[:space:]]'                # PHP
   'go[[:space:]]+install[[:space:]]'                      # Go binaries
+  'go[[:space:]]+get[[:space:]]'                          # mutates go.mod
+  # -- remove / uninstall (mutates the manifest) --
+  'npm[[:space:]]+(uninstall|remove|rm|un)([[:space:]]|$)'
+  'pnpm[[:space:]]+(remove|rm|uninstall|un)([[:space:]]|$)'
+  'yarn[[:space:]]+remove([[:space:]]|$)'
+  'bun[[:space:]]+(remove|rm|uninstall)([[:space:]]|$)'
+  'pip3?[[:space:]]+uninstall([[:space:]]|$)'
+  'uv[[:space:]]+remove([[:space:]]|$)'
+  'poetry[[:space:]]+remove([[:space:]]|$)'
+  'cargo[[:space:]]+remove([[:space:]]|$)'
+  'gem[[:space:]]+uninstall([[:space:]]|$)'
+  'composer[[:space:]]+remove([[:space:]]|$)'
+  # -- update / upgrade (pulls new code: a supply-chain decision) --
+  'npm[[:space:]]+(update|upgrade)([[:space:]]|$)'
+  'pnpm[[:space:]]+(update|up|upgrade)([[:space:]]|$)'
+  'yarn[[:space:]]+(upgrade|up)([[:space:]]|$)'
+  'bun[[:space:]]+update([[:space:]]|$)'
+  'pip3?[[:space:]]+install[[:space:]]+(-U([[:space:]]|$)|--upgrade)'
+  'poetry[[:space:]]+update([[:space:]]|$)'
+  'cargo[[:space:]]+update([[:space:]]|$)'
+  'gem[[:space:]]+update([[:space:]]|$)'
+  'bundle[[:space:]]+update([[:space:]]|$)'
+  'composer[[:space:]]+(update|upgrade)([[:space:]]|$)'
 )
 
 for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
-  if echo "$CMD" | grep -qE "$pattern"; then
+  if echo "$CMD" | grep -qiE "$pattern"; then
     if check_override "block-destructive"; then
       exit 0  # Override active; allowed but logged.
     fi
@@ -104,8 +144,11 @@ for pattern in "${ASK_PATTERNS[@]}"; do
     if check_override "block-destructive"; then
       exit 0  # Override active; allowed but logged.
     fi
-    log_event "ASK" "dependency-install" "Command matches '$pattern' — asking the user"
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Dependency install (CLAUDE.md §2 — propose, user approves). Matched pattern: %s"}}\n' "$pattern"
+    log_event "ASK" "dependency-change" "Command matches '$pattern' — asking the user"
+    # Built with jq, never printf-interpolated: the reason must stay valid JSON
+    # no matter what characters a future pattern contains.
+    jq -cn --arg pattern "$pattern" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:("Dependency change (CLAUDE.md §2 — install/upgrade/remove needs the user'\''s approval; lockfile restores are allowed). Matched pattern: " + $pattern)}}'
     exit 0
   fi
 done

@@ -78,42 +78,54 @@ detect_node_pm() {
 
 # Independent `if`s (not if/elif): a polyglot repo runs EVERY ecosystem present,
 # not just the first one detected.
+# Counters use POSIX assignment (RAN=$((RAN+1))), never bare ((RAN++)) — the
+# arithmetic command returns status 1 when the expression evaluates to 0, so
+# under lib.sh's set -e the first increment from 0 would kill the hook before
+# any check runs.
+# Ecosystems whose toolchain is missing are SKIPPED with a note, not counted
+# as failed — "cannot verify" must never masquerade as "verification failed".
 if [[ -f package.json ]]; then
   PM=$(detect_node_pm)
-  if jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
-    ((RAN++)); run_check "typecheck" "$PM run typecheck" || ((FAILED++)) || true
-  fi
-  if jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-    ((RAN++)); run_check "lint" "$PM run lint" || ((FAILED++)) || true
-  fi
-  if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
-    ((RAN++))
-    if [[ "$PM" == "npm" ]]; then
-      run_check "test" "npm test" || ((FAILED++)) || true
-    else
-      run_check "test" "$PM test" || ((FAILED++)) || true
+  if ! command -v "$PM" >/dev/null 2>&1; then
+    echo "   ⚠ package.json present but '$PM' is not installed — Node checks skipped" >&2
+  else
+    if jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
+      RAN=$((RAN+1)); run_check "typecheck" "$PM run typecheck" || FAILED=$((FAILED+1))
+    fi
+    if jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
+      RAN=$((RAN+1)); run_check "lint" "$PM run lint" || FAILED=$((FAILED+1))
+    fi
+    if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+      RAN=$((RAN+1)); run_check "test" "$PM test" || FAILED=$((FAILED+1))
     fi
   fi
 fi
 if [[ -f pyproject.toml ]]; then
-  # Use { } not ( ) — () creates a subshell, FAILED++ wouldn't propagate.
   if command -v ruff >/dev/null; then
-    ((RAN++)); { run_check "ruff" "ruff check ." || ((FAILED++)); } || true
+    RAN=$((RAN+1)); run_check "ruff" "ruff check ." || FAILED=$((FAILED+1))
   fi
   if command -v mypy >/dev/null; then
-    ((RAN++)); { run_check "mypy" "mypy ." || ((FAILED++)); } || true
+    RAN=$((RAN+1)); run_check "mypy" "mypy ." || FAILED=$((FAILED+1))
   fi
   if command -v pytest >/dev/null; then
-    ((RAN++)); { run_check "pytest" "pytest -q" || ((FAILED++)); } || true
+    RAN=$((RAN+1)); run_check "pytest" "pytest -q" || FAILED=$((FAILED+1))
   fi
 fi
 if [[ -f Cargo.toml ]]; then
-  ((RAN++)); run_check "cargo check" "cargo check" || ((FAILED++)) || true
-  ((RAN++)); run_check "cargo test" "cargo test --quiet" || ((FAILED++)) || true
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "   ⚠ Cargo.toml present but 'cargo' is not installed — Rust checks skipped" >&2
+  else
+    RAN=$((RAN+1)); run_check "cargo check" "cargo check" || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "cargo test" "cargo test --quiet" || FAILED=$((FAILED+1))
+  fi
 fi
 if [[ -f go.mod ]]; then
-  ((RAN++)); run_check "go vet" "go vet ./..." || ((FAILED++)) || true
-  ((RAN++)); run_check "go test" "go test ./..." || ((FAILED++)) || true
+  if ! command -v go >/dev/null 2>&1; then
+    echo "   ⚠ go.mod present but 'go' is not installed — Go checks skipped" >&2
+  else
+    RAN=$((RAN+1)); run_check "go vet" "go vet ./..." || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "go test" "go test ./..." || FAILED=$((FAILED+1))
+  fi
 fi
 
 if (( FAILED > 0 )); then
@@ -127,8 +139,8 @@ if (( RAN == 0 )); then
   # Code changed but no checker was discovered/installed. This is NOT success —
   # report it honestly so "no checks ran" is never mistaken for "checks passed".
   echo "" >&2
-  echo "⚠️  No verification commands were discovered for this repo (no package.json" >&2
-  echo "   script, pyproject tool, Cargo.toml, or go.mod checker found)." >&2
+  echo "⚠️  No verification commands could be run for this repo (no ecosystem" >&2
+  echo "   checker was found, or its toolchain is not installed here)." >&2
   echo "   Code changed but nothing was verified — run the project's checks manually" >&2
   echo "   before declaring done (CLAUDE.md §14/§16)." >&2
   exit 0

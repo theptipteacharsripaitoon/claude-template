@@ -7,12 +7,35 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same ref supersedes any in-flight run (ci-review skill:
+# concurrency + cancellation).
+concurrency:
+  group: template-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hooks-and-catalog:
-    runs-on: ubuntu-latest
+    # Pinned image, not floating -latest: tool versions change deliberately.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10 # bound the job (ci-review skill item 7)
+    env:
+      SHELLCHECK_VERSION: v0.10.0
+      SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Install pinned ShellCheck
+        # The runner image ships *some* ShellCheck; install the exact release
+        # this repo is validated against, checksum-verified.
+        run: |
+          curl -fsSL -o /tmp/shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+          sudo install "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
       - name: Hook regression suite
         run: bash tests/hooks/run-tests.sh
       - name: Hook installer end-to-end (embedded functional tests)
@@ -20,8 +43,12 @@ jobs:
       - name: ShellCheck all hooks
         # -x + -P so the shared lib.sh source is followed from the hooks dir
         # (otherwise SC1091 "not following" trips the gate).
-        run: shellcheck -x -P .claude/hooks .claude/hooks/*.sh tests/hooks/run-tests.sh
+        run: shellcheck -x -P .claude/hooks .claude/hooks/*.sh tests/hooks/run-tests.sh claude-init.sh tests/skills/routing/seed-repo.sh
       - name: Skill catalog consistency
         run: |
           python -m pip install --quiet 'pyyaml==6.0.2'
           python tests/skills/check_catalog.py
+      # The live skill-routing evaluation (tests/skills/routing/run_eval.py)
+      # needs an authenticated Claude Code session and real model calls, so it
+      # runs locally, not in CI; its committed results live in
+      # tests/skills/results/.
