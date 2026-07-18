@@ -18,7 +18,9 @@ jobs:
       - name: Hook installer end-to-end (embedded functional tests)
         run: bash .claude/hooks/install.sh
       - name: ShellCheck all hooks
-        run: shellcheck .claude/hooks/*.sh tests/hooks/run-tests.sh
+        # -x + -P so the shared lib.sh source is followed from the hooks dir
+        # (otherwise SC1091 "not following" trips the gate).
+        run: shellcheck -x -P .claude/hooks .claude/hooks/*.sh tests/hooks/run-tests.sh
       - name: Skill catalog consistency
         run: |
           python -m pip install --quiet 'pyyaml==6.0.2'

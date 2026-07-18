@@ -129,7 +129,7 @@ echo "== claude-init: generated projects inherit root protections =="
 # files are copied and would ignore machine-local/secret files.
 BOOT="$SCRATCH/boot"; mkdir -p "$BOOT"
 ( set +e
-  # shellcheck disable=SC1090
+  # shellcheck disable=SC1090,SC1091  # sourced path is a runtime variable
   source "$REPO/claude-init.sh"
   CLAUDE_TEMPLATE_DIR="$REPO" CLAUDE_PROJECTS_DIR="$BOOT" claude-init gen >/dev/null 2>&1
 )
