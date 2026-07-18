@@ -364,6 +364,14 @@ Weighted total ≈ **8.3**. It does not reach 9.0 because two ceilings are **own
 produce a green run until the GitHub billing lock is cleared, and there is no `LICENSE`. Both are
 recorded as owner decisions; no repo change can resolve them.
 
+### Pushed CI run (final)
+Branch `claude/template-second-audit-71e140` pushed at `7b67ce3`. Actions run
+**29638243069** completed `failure` with **zero steps** — annotation again reads
+"account is locked due to a billing issue". Every workflow step passes locally on
+the committed blobs (hook suite 50/50, installer OK, `shellcheck -x -P` clean,
+catalog pass). CI green therefore remains blocked on the owner clearing the lock;
+no repo change can resolve it. Not merged.
+
 ### Remaining limitations
 - CI green depends on the owner clearing the billing lock (repo-side workflow is correct + locally green).
 - No `LICENSE` (owner must choose).
