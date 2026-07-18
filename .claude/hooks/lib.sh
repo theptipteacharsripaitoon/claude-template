@@ -49,8 +49,20 @@ log_event() {
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "?")
   local hook="${CLAUDE_HOOK_NAME:-unknown}"
+  # This log is tab-separated (the README documents `awk -F'\t'` queries over
+  # it). `category` and `detail` can carry user-controlled data (e.g. a file
+  # path), so strip tab/newline/carriage-return/other control characters first —
+  # otherwise a path containing a newline forges an extra apparent log record.
+  category=$(sanitize_log_field "$category")
+  detail=$(sanitize_log_field "$detail")
   # JSON-ish line for easy grepping; not strict JSON to keep deps minimal.
   printf '%s\t%s\t%s\t%s\t%s\n' "$ts" "$kind" "$hook" "$category" "$detail" >> "$logfile" 2>/dev/null || true
+}
+
+# Collapse tab/newline/CR and other C0 control characters to a single space so a
+# single log event always occupies exactly one line with a fixed column count.
+sanitize_log_field() {
+  printf '%s' "$1" | tr '\000-\037' ' '
 }
 
 # --- Override mechanism ------------------------------------------------------
