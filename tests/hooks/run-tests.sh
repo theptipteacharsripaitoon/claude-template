@@ -12,6 +12,8 @@ export CLAUDE_PROJECT_DIR="$SCRATCH"
 PASS=0; FAIL=0
 
 AWS_FAKE="AKIA""ABCDEFGHIJKLMNOP"
+AWS_FAKE_MARKED="AKIA""EXAMPLE012345678"   # fake marker embedded IN the value
+AWS_REAL="AKIA""1234567890QRSTUV"
 GH_FAKE="ghp_""abcdefghijklmnopqrstuvwxyz0123456789"
 PEM_FAKE="-----BEGIN RSA ""PRIVATE"" KEY-----"
 PW_KEY="pass""word"
@@ -55,21 +57,28 @@ t_ask ASK3 block-destructive.sh "$(cmd 'cargo add serde')"
 echo "== block-destructive: malformed JSON fails open =="
 t BD11 0 block-destructive.sh 'this is not json'
 
-echo "== protect-files =="
+echo "== protect-files: secrets stay a HARD deny (exit 2) =="
 t PF1 2 protect-files.sh "$(fp '/repo/.env')"
 t PF2 0 protect-files.sh "$(fp '/repo/.env.example')"
-t PF4 2 protect-files.sh "$(fp '/repo/package-lock.json')"
 t PF5 0 protect-files.sh "$(fp '/repo/src/main.py')"
 t PF6 0 protect-files.sh "$(fp '/c/repo/docs/แผนงาน.md')"
-t PF7 2 protect-files.sh "$(fp '/repo/migrations/0001_init.sql')"
 t PF8 2 protect-files.sh "$(fp '/repo/my docs/.env.local')"
 t PF9 0 protect-files.sh 'not json'
-echo "== protect-files: NotebookEdit coverage =="
-t NB1 2 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/migrations/x.ipynb"}}'
+t PF11 2 protect-files.sh "$(fp '/repo/.env.example.secret')"
+echo "== protect-files: exact-component matching, no substring false positives =="
+t PF10 0 protect-files.sh "$(fp '/repo/src/config.environment.ts')"
+t PF13 0 protect-files.sh "$(fp '/repo/src/infrastructure/service.ts')"
+echo "== protect-files: approvable paths ASK instead of hard-deny =="
+t_ask PFA1 protect-files.sh "$(fp '/repo/package-lock.json')"
+t_ask PFA2 protect-files.sh "$(fp '/repo/migrations/0001_init.sql')"
+t_ask PFA3 protect-files.sh "$(fp '/repo/.github/workflows/ci.yml')"
+t_ask PFA4 protect-files.sh "$(fp '/repo/.claude/hooks/x.sh')"
+echo "== protect-files: NotebookEdit coverage (migrations ask) =="
+t_ask NB1 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/migrations/x.ipynb"}}'
 
 echo "== scan-secrets =="
 t SS1 2 scan-secrets.sh "$(wc_ "key = \"$AWS_FAKE\"")"
-t SS2 0 scan-secrets.sh "$(wc_ "key = \"${AWS_FAKE}\"  # EXAMPLE fixture")"
+t SS2 0 scan-secrets.sh "$(wc_ "key = \"${AWS_FAKE_MARKED}\"  # fixture")"
 t SS3 2 scan-secrets.sh "$(wc_ "$PEM_FAKE")"
 t SS4 2 scan-secrets.sh "$(wc_ "$(printf 'a = "%s"\nb = "%s"' "$AWS_FAKE" "$GH_FAKE")")"
 t SS5 2 scan-secrets.sh "$(wc_ "$PW_KEY = \"abcdefghijklmnopqrstuvwx\"")"
@@ -78,6 +87,12 @@ t SS7 2 scan-secrets.sh "$(printf '{"tool_name":"Edit","tool_input":{"file_path"
 t SS8 0 scan-secrets.sh 'not json'
 echo "== scan-secrets: NotebookEdit coverage =="
 t NB2 2 scan-secrets.sh "$(printf '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/x.ipynb","new_source":%s}}' "$(printf 'k = "%s"' "$AWS_FAKE" | jq -Rs .)")"
+echo "== scan-secrets: same-pattern fake-then-real must NOT bypass =="
+# Line 1 is a fake fixture (EXAMPLE marker); line 2 is a real-shaped AWS key with
+# no marker. The scanner must inspect the SECOND match, not stop at the first.
+t SS9 2 scan-secrets.sh "$(wc_ "$(printf 'k1 = "%s"  # EXAMPLE\nk2 = "%s"' "$AWS_FAKE" "$AWS_REAL")")"
+echo "== scan-secrets: real secret with fake word elsewhere on the line must NOT bypass =="
+t SS10 2 scan-secrets.sh "$(wc_ "$(printf 'api_key = "%s"  # see config.example' "$AWS_REAL")")"
 
 echo "== check-diff-size =="
 BIG=$(for i in $(seq 1 1100); do echo "line $i"; done)
@@ -101,6 +116,10 @@ if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); echo "PASS VD2    clean tree -> exi
 mkdir -p "$SCRATCH/nogit"
 got=0; printf '%s' '{}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nogit" bash "$HOOKS/verify-done.sh" >/dev/null 2>&1 || got=$?
 if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); echo "PASS VD3    no git -> exit 0"; else FAIL=$((FAIL+1)); echo "FAIL VD3    no git want exit 0 got $got"; fi
+# VD5: blocking mode with NO discoverable checker must NOT claim "passed".
+mkdir -p "$SCRATCH/nochecks" && ( cd "$SCRATCH/nochecks" && git init -q . && echo "x=1" > a.py && git add a.py && git -c user.email=t@t -c user.name=t commit -qm init && echo "x=2" > a.py )
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nochecks" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd5.txt" || got=$?
+if [[ "$got" == 0 ]] && ! grep -q 'checks passed' "$SCRATCH/vd5.txt" && grep -qi 'no verification' "$SCRATCH/vd5.txt"; then PASS=$((PASS+1)); echo "PASS VD5    no checks discovered -> not reported as passed"; else FAIL=$((FAIL+1)); echo "FAIL VD5    want exit 0 + 'no verification' (not 'checks passed'); got exit $got"; fi
 
 echo "== install.sh: counter must survive set -e =="
 if grep -q '((FAIL++))' "$HOOKS/install.sh"; then FAIL=$((FAIL+1)); echo "FAIL INST1  install.sh still uses ((FAIL++)) — dies under set -e on first failing test"; else PASS=$((PASS+1)); echo "PASS INST1  no set -e-fatal increments"; fi

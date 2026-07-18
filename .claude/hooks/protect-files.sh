@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
-# Blocks edits to sensitive files. Per CLAUDE.md §2 AI Action Boundaries
-# and the per-project "Protected Paths" config.
-# Hook event: PreToolUse, matcher: Edit|Write|MultiEdit
+# Guards sensitive files. Per CLAUDE.md §2 AI Action Boundaries and the
+# per-project "Protected Paths" config.
+# Hook event: PreToolUse, matcher: Edit|Write|NotebookEdit
+#
+# Two tiers:
+#   DENY (exit 2)  — secrets and git internals. Never silently edited; unblock
+#                    only via manual edit or CLAUDE_HOOK_OVERRIDE (logged).
+#   ASK  (exit 0 + permissionDecision:"ask") — CI/infra/migrations/lockfiles/
+#                    settings/hooks. Legitimate WITH the user's approval, so the
+#                    user can approve in-chat instead of restarting (§2 "confirm").
+#
+# Matching is on normalized PATH COMPONENTS / exact basenames — never raw
+# substrings — so `config.environment.ts` is not mistaken for `.env`.
 
 export CLAUDE_HOOK_NAME="protect-files"
 source "$(dirname "$0")/lib.sh"
@@ -15,107 +25,97 @@ if [[ -z "$FILE" ]]; then
   exit 0
 fi
 
-# Files that LOOK like protected env files but are conventionally committed
-# templates/samples meant for documentation. Allow these explicitly so the
-# .env substring match doesn't false-positive on them.
-ALLOWLIST=(
+# Normalize: backslashes -> forward slashes; wrap in slashes so directory
+# components can be matched as exact, slash-bounded segments (`/infra/` will
+# not match `infrastructure`).
+FILE_N="${FILE//\\//}"
+BASE="${FILE_N##*/}"
+SEG="/${FILE_N#/}/"
+
+# --- Allowlist: committed env templates are editable documentation ------------
+ALLOWLIST_BASE=(
   ".env.example"
   ".env.sample"
   ".env.template"
   ".env.dist"
   ".env.test.example"
 )
-
-for allowed in "${ALLOWLIST[@]}"; do
-  if [[ "$FILE" == *"$allowed" ]]; then
-    exit 0  # explicitly allowed; documentation/template file
+for allowed in "${ALLOWLIST_BASE[@]}"; do
+  if [[ "$BASE" == "$allowed" ]]; then
+    exit 0  # explicit template/sample; editable
   fi
 done
 
-# Patterns that should never be silently edited.
-# Each entry is a substring match against the full file path.
-PROTECTED_PATTERNS=(
-  # Secrets / env
-  ".env"
-  ".env.local"
-  ".env.production"
-  ".env.staging"
-  "secrets.yaml"
-  "secrets.yml"
-  ".secrets/"
-  "credentials.json"
-  "credentials.yaml"
+# --- Helpers ------------------------------------------------------------------
+# True if the path contains an exact directory segment (or adjacent segments).
+has_segment() { [[ "$SEG" == *"/$1/"* ]]; }
+# True if the basename equals one of the given names.
+base_is() {
+  local b
+  for b in "$@"; do [[ "$BASE" == "$b" ]] && return 0; done
+  return 1
+}
 
-  # Lockfiles (only the user/CI should regenerate)
-  "package-lock.json"
-  "pnpm-lock.yaml"
-  "yarn.lock"
-  "uv.lock"
-  "poetry.lock"
-  "Pipfile.lock"
-  "Cargo.lock"
-  "go.sum"
-  "Gemfile.lock"
-  "composer.lock"
+# --- DENY: secrets and git internals (hard block) -----------------------------
+DENY=false
+# .env and any .env.<suffix> (allowlisted templates already returned above).
+if [[ "$BASE" == ".env" || "$BASE" == .env.* ]]; then DENY=true; fi
+base_is "secrets.yaml" "secrets.yml" "credentials.json" "credentials.yaml" && DENY=true
+has_segment ".secrets" && DENY=true
+has_segment ".git" && DENY=true
 
-  # CI/CD
-  ".github/workflows/"
-  ".gitlab-ci.yml"
-  "Jenkinsfile"
-  ".circleci/config.yml"
-  "azure-pipelines.yml"
-  "buildkite/"
-  ".drone.yml"
-
-  # Infrastructure
-  "infra/"
-  "terraform/"
-  "pulumi/"
-  "cdk/"
-
-  # Kubernetes / Helm
-  "k8s/prod/"
-  "k8s/production/"
-  "manifests/prod/"
-  "charts/prod/"
-
-  # Containers (production-impacting)
-  "docker-compose.production.yml"
-  "docker-compose.prod.yml"
-
-  # Migrations (often run automatically)
-  "migrations/"
-  "alembic/versions/"
-  "db/migrate/"
-  "prisma/migrations/"
-
-  # Git internals
-  ".git/"
-  ".gitattributes"
-
-  # Code owners and policy
-  "CODEOWNERS"
-  ".github/CODEOWNERS"
-  ".claude/settings.json"
-  ".claude/hooks/"
-)
-
-for pattern in "${PROTECTED_PATTERNS[@]}"; do
-  if [[ "$FILE" == *"$pattern"* ]]; then
-    if check_override "protect-files"; then
-      exit 0
-    fi
-    log_block \
-      "protected file" \
-      "$FILE matches protected pattern '$pattern'." \
-      "CLAUDE.md §2 + Project Configuration > Protected Paths"
-    echo "" >&2
-    echo "Options:" >&2
-    echo "  - Ask the user to confirm and edit the file directly, OR" >&2
-    echo "  - Set CLAUDE_HOOK_OVERRIDE=protect-files for one session (logged), OR" >&2
-    echo "  - Remove the pattern from .claude/hooks/protect-files.sh if it's no longer protected." >&2
-    exit 2
+if [[ "$DENY" == "true" ]]; then
+  if check_override "protect-files"; then
+    exit 0
   fi
-done
+  log_block \
+    "protected secret/internal file" \
+    "$FILE is a secret or git-internal file (never edited automatically)." \
+    "CLAUDE.md §2 + §7 Secrets"
+  echo "" >&2
+  echo "Options:" >&2
+  echo "  - The user edits the file directly, OR" >&2
+  echo "  - Set CLAUDE_HOOK_OVERRIDE=protect-files for one session (logged)." >&2
+  exit 2
+fi
+
+# --- ASK: legitimate with the user's approval ---------------------------------
+ASK=false
+# Lockfiles (regenerated, not hand-edited)
+base_is "package-lock.json" "pnpm-lock.yaml" "yarn.lock" "uv.lock" "poetry.lock" \
+        "Pipfile.lock" "Cargo.lock" "go.sum" "Gemfile.lock" "composer.lock" && ASK=true
+# CI/CD
+has_segment ".github" && has_segment "workflows" && ASK=true
+base_is ".gitlab-ci.yml" "Jenkinsfile" "azure-pipelines.yml" ".drone.yml" && ASK=true
+has_segment ".circleci" && ASK=true
+has_segment "buildkite" && ASK=true
+# Infrastructure
+has_segment "infra" && ASK=true
+has_segment "terraform" && ASK=true
+has_segment "pulumi" && ASK=true
+has_segment "cdk" && ASK=true
+# Kubernetes / Helm (production)
+{ has_segment "k8s" || has_segment "manifests" || has_segment "charts"; } &&
+  { has_segment "prod" || has_segment "production"; } && ASK=true
+# Containers (production-impacting)
+base_is "docker-compose.production.yml" "docker-compose.prod.yml" && ASK=true
+# Migrations (often auto-run)
+has_segment "migrations" && ASK=true
+{ has_segment "alembic" && has_segment "versions"; } && ASK=true
+{ has_segment "db" && has_segment "migrate"; } && ASK=true
+{ has_segment "prisma" && has_segment "migrations"; } && ASK=true
+# Ownership / policy / enforcement layer
+base_is "CODEOWNERS" ".gitattributes" && ASK=true
+[[ "$FILE_N" == *".claude/settings.json" ]] && ASK=true
+has_segment ".claude" && has_segment "hooks" && ASK=true
+
+if [[ "$ASK" == "true" ]]; then
+  if check_override "protect-files"; then
+    exit 0
+  fi
+  log_event "ASK" "protected-file" "$FILE needs approval before editing"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Protected path (CLAUDE.md §2 — confirm before editing): %s. Approve to proceed, or edit it yourself."}}\n' "$BASE"
+  exit 0
+fi
 
 exit 0
