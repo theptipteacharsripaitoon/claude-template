@@ -310,24 +310,34 @@ Tool calls and computation cost real time and money. Verbose tool output costs m
 
 ## 16. Definition of Done
 
-A task is done when ALL of these are true. Confirm each explicitly when reporting. Domain skills add their own checks on top.
+A task is done when every **applicable** item below is true. Applicability is by
+task type and repo capability — scale to risk exactly as §13/§14 require; do not
+apply irrelevant items and do not skip relevant ones. Confirm each applicable item
+explicitly when reporting, and **name any check you skipped or that was unavailable**
+(never silently drop one, never fabricate a result). Domain skills add checks on top.
 
-**Always required:**
-- [ ] Code compiles and runs without warnings; all existing tests pass locally.
-- [ ] New tests cover the change (happy path + at least one failure mode).
-- [ ] Linter, formatter, and type-checker pass with zero issues.
+**Applies to any task that produced or changed source code (scale by §13 risk):**
+- [ ] Code compiles and runs without new warnings; existing tests pass locally.
+- [ ] New tests cover the change (happy path + ≥1 failure mode) **when behavior changed**. A pure refactor keeps existing assertions green instead; a change with no runnable surface says so.
+- [ ] Linter/formatter pass; type-checker passes **if the project has one** (say so when it doesn't).
 - [ ] No secrets, debug statements, commented-out code, or stray `TODO`s.
-- [ ] Commit message follows Conventional Commits.
-- [ ] Verification matrix (§14) for the change type satisfied — including actually executing the changed code path.
+- [ ] Verification matrix (§14) for the change type satisfied — including executing the changed code path.
 
-**When applicable:**
+**Applies only when the task involves a Git operation the user requested:**
+- [ ] Commit message follows Conventional Commits. (Do not create a commit the user did not ask for.)
+
+**Does NOT require tests, a commit, or code execution** — deliver the analysis/answer and state what you verified:
+- Review-only, investigation-only, or architecture-analysis tasks.
+- Documentation-only changes and typo fixes (verify by the relevant §14 row, e.g. links/build).
+
+**When applicable (any task type):**
 - [ ] Dependencies added → user explicitly approved.
 - [ ] Protected files modified → user explicitly authorized.
 - [ ] New env vars introduced → documented in `.env.example` with a fake placeholder.
 - [ ] User-visible setup, dev, or deploy steps changed → `README.md` or relevant doc updated.
 - [ ] Domain skill loaded (docker, k8s, airflow, etc.) → its Done criteria also met.
 
-If any item is false, the task is not done. Say so explicitly. Do not declare success early.
+If any applicable item is false, the task is not done. Say so explicitly. Do not declare success early, and do not manufacture applicability to look thorough.
 
 ## 17. When Stuck
 
