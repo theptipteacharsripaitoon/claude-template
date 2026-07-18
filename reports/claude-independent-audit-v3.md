@@ -318,3 +318,109 @@ companion pointers; honest CHANGELOG and prior reports.
   `tests/skills/` so it is repeatable; consider a SemVer/compat policy doc.
 - **Owner actions (no repo fix):** clear the GitHub billing/usage lock so CI executes; choose a LICENSE.
 
+---
+
+# Post-implementation (added after Phases 3–5; Phase 1 above is unmodified)
+
+All fixes were adjudicated in [review-adjudication-v3.md](review-adjudication-v3.md) and landed
+test-first: the new regression cases were written, run, and observed failing exactly along the
+predicted defect classes (37 failing / 70 passing), then each fix turned its cases green.
+
+## What changed
+
+| Change | Commits |
+|---|---|
+| D1 (P0): verify-done strict-safe counters + missing-toolchain honesty | `b259fd3` |
+| D2/D5/D6: rm variants, order-independent git clean, case-insensitive SQL, dependency remove/upgrade asks, jq ask-JSON | `d13809e` |
+| D3: protect-files jq ask-JSON | `679ee76` |
+| D4: claude-init name-safe + failure-atomic | `11795d9` |
+| Validator timeouts in settings.json | `fc1f171` |
+| Regression matrix 50 → 107 cases | `c11aa8a` |
+| CI determinism (runner/Python/ShellCheck pins, concurrency) | `4fa28d9` |
+| Routing harness + fixture ids/allowed_companions | `0455277` |
+| Docs sync + v2 "38 skills" erratum | `8b80f4d` |
+| Routing baseline results | `870ee46` |
+| repository-cleanup disambiguation + recall pin (measured misroute) | see below |
+
+Work branch note: implementation happened on `claude/hook-testing-threat-audit-6f94e3` (this
+worktree's branch), which supersedes the empty `claude/template-third-audit-192d32` recorded in
+Phase 0 — commits exist only on the former.
+
+## Validation evidence
+
+- Hook suite: **107/107** — in the worktree *and* from a clean `git archive HEAD` export.
+- Installer end-to-end: green (both environments).
+- ShellCheck: **clean** with the exact CI invocation (v0.10.0, `-x -P .claude/hooks`, now
+  including `claude-init.sh` and the routing seed script).
+- Ask-JSON: every ask branch parsed with `jq -e` including quote/tab/newline/backslash/Thai/
+  300-char basenames (PFH1–6) and all dependency asks (ASK1–17).
+- Catalog: 37/37; workflow YAML parses; fixture grew to 20 cases.
+- **CI executed remotely and passed.** The owner cleared the billing lock mid-cycle; the push of
+  this branch produced the repository's **first real GitHub Actions execution** — every step
+  green on a hosted runner:
+  [run 29643662878](https://github.com/theptipteacharsripaitoon/claude-template/actions/runs/29643662878).
+  The Phase 1 statement "no pushed run has ever executed" is therefore obsolete as of 2026-07-18.
+
+## Measured routing (previously UNMEASURED)
+
+Baseline, 19 cases × 3 runs, seeded domain repos, headless `claude -p`, model `claude-sonnet-5`,
+57/57 runs completed with zero errors (`tests/skills/results/routing-20260718-1221.jsonl`):
+
+| Metric | Value |
+|---|---|
+| Primary recall | **0.902** |
+| Precision | **0.939** |
+| Conflict rate | **0.053** |
+| No-load rate | **0.039** |
+| Run-to-run stability | **0.895** (17/19 cases identical across all 3 runs) |
+
+Findings: 16 of 19 cases routed perfectly 3/3 — including every review-cluster case, all
+git-hygiene boundaries, both security cases, and the engine-specificity case (nothing loaded for
+the PostgreSQL prompt, as intended). The **only conflict source** was `layout-root-mess`
+("Organize this project - the root is a mess") loading `repository-cleanup` 3/3 — a stable
+misroute traced to that skill's own trigger phrase "organize the project". The two airflow
+authoring cases each dropped one run to no-load (3.9%) — recorded as variance; descriptions
+unchanged (evidence inconclusive).
+
+**Fix (smallest change):** removed "organize the project" from the `repository-cleanup`
+description and added an explicit ownership pointer to `project-layout`; added fixture case
+`cleanup-repo-recall` so the edited skill's own recall is permanently pinned. Verification
+re-runs (same harness and model, fresh session window): `layout-root-mess` now loads
+`project-layout` **3/3 with zero conflicts** (`routing-20260718-1652.jsonl`; baseline was a 3/3
+misroute), and `cleanup-repo-recall` loads `repository-cleanup` **3/3**
+(`routing-20260718-1656.jsonl`) — the misroute is gone and the edited skill's own recall did not
+degrade. With this single conflict source eliminated, the only remaining baseline misses are the
+two airflow no-load runs (variance, unchanged by design).
+
+## Environment artifacts documented (not repo defects)
+
+- msys jq 1.6 exits **0** on empty input with `-e` (spec says 4) — the `t_ask` helper now guards
+  with a non-empty check so a silent allow can never masquerade as a valid ask.
+- Windows MAX_PATH: seeding/`check_catalog.py` fail under ~260-char roots (long-path `git add`,
+  `os.path.exists`); short-path exports and CI are unaffected (`core.longpaths` set in seeds).
+
+## Re-score (same rubric)
+
+| Category | Weight | Before | After | Basis for change |
+|---|---:|---:|---:|---|
+| Technical correctness | 15% | 7 | 9 | all confirmed defects fixed test-first; semantic-equivalent limits documented |
+| Skill trigger quality | 15% | 7 | 8.5 | measured 19×3: recall .902 / precision .939; misroute fixed + recall-pinned |
+| Hook correctness | 15% | 7 | 9 | 107-case matrix, jq-valid asks, documented exits verified |
+| Conflict avoidance | 10% | 8 | 9 | measured conflicts had one source; eliminated and re-verified |
+| Safety & permissions | 10% | 8 | 9 | §2 fully enforced (remove/upgrade asks); restore reconciliation documented |
+| Testing & evaluation | 15% | 7 | 9 | suite ×2.1, live routing harness + committed results, **CI green remotely** |
+| Context efficiency | 5% | 9 | 9 | unchanged |
+| Team usability | 5% | 9 | 9 | docs synced to implementation |
+| Maintainability | 5% | 9 | 9 | pinned CI, table-driven matrix, shared helpers |
+| Public-template readiness | 5% | 6 | 7 | CI green + accurate docs; LICENSE/tag/profiles remain owner/roadmap |
+
+**Overall: 7.6 → 8.8.** The 9.0 gate items are met (no known P0, strict-shell clean, valid JSON,
+regression coverage, repeated routing results, deterministic CI, bootstrap failure-safety,
+accurate reports, no repository-caused CI failure), but trigger quality is scored at its
+*measured* values and public readiness still awaits owner decisions (LICENSE, version tag) —
+so the overall stays below 9. The 9.5 bar additionally requires ≥95% measured precision, a
+license, and distribution readiness; not claimed.
+
+**Remaining owner actions:** choose a LICENSE; tag a release after merge; optionally enable the
+GitHub template flag. (The billing lock is resolved.)
+

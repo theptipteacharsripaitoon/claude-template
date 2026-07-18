@@ -77,6 +77,10 @@ git_hygiene_scope:   # post-fix expectations (triggers narrowed 2026-07-17)
     prompt: "Stop tracking node_modules"
     must_load: [git-hygiene]
     must_not_load: [repository-cleanup]
+  - id: cleanup-repo-recall
+    prompt: "Clean up this repo and prepare it for team handover"
+    must_load: [repository-cleanup]
+    must_not_load: []
 
 security_cluster:
   - id: secret-scan-repo
@@ -106,4 +110,31 @@ airflow_authoring_vs_review:
     must_load: [airflow]
     must_not_load: [airflow-review]
 
-evaluated_runs: []   # append {date, cc_version, model, runs_per_case, metrics, results_file} entries here
+evaluated_runs:
+  - date: 2026-07-18
+    cc_version: 2.1.214
+    model: claude-sonnet-5
+    runs_per_case: 3
+    cases: 19
+    kind: baseline
+    results_file: results/routing-20260718-1221.jsonl
+    metrics: {recall: 0.902, precision: 0.939, conflict_rate: 0.053, no_load_rate: 0.039, stability: 0.895}
+    note: "single conflict source: layout-root-mess -> repository-cleanup 3/3 (description overlap)"
+  - date: 2026-07-18
+    cc_version: 2.1.214
+    model: claude-sonnet-5
+    runs_per_case: 3
+    cases: 1
+    kind: post-fix verification (layout-root-mess)
+    results_file: results/routing-20260718-1652.jsonl
+    metrics: {recall: 1.0, precision: 1.0, conflict_rate: 0.0, no_load_rate: 0.0, stability: 1.0}
+    note: "after repository-cleanup description disambiguation: project-layout 3/3"
+  - date: 2026-07-18
+    cc_version: 2.1.214
+    model: claude-sonnet-5
+    runs_per_case: 3
+    cases: 1
+    kind: recall pin (cleanup-repo-recall)
+    results_file: results/routing-20260718-1656.jsonl
+    metrics: {recall: 1.0, precision: 1.0, conflict_rate: 0.0, no_load_rate: 0.0, stability: 1.0}
+    note: "edited description still fires 3/3 on its own prompt"

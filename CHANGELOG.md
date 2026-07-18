@@ -48,8 +48,15 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 - **CI**: pinned runner image (`ubuntu-24.04`), SHA-pinned `actions/setup-python`
   with Python 3.12, checksum-verified ShellCheck v0.10.0, and a concurrency group
   that cancels superseded runs; ShellCheck now also lints `claude-init.sh` and
-  the routing seed script. (Execution still blocked by the account billing lock —
-  owner action.)
+  the routing seed script. The account billing lock was cleared mid-cycle: run
+  29643662878 is the repository's **first real Actions execution — all steps
+  green** on a hosted runner.
+- **repository-cleanup**: trigger phrase "organize the project" removed and
+  ownership pointer added — the 19×3 baseline measured a stable 3/3 misroute of
+  the structure-only prompt "Organize this project - the root is a mess" away
+  from project-layout; the fixture gained a `cleanup-repo-recall` case so the
+  skill's own recall is pinned, and the fix was re-verified live (see
+  `tests/skills/results/` and `evaluated_runs`).
 - hooks README synced with implementation: ask tiers incl. dependency changes,
   component-based protected-path matching (stale `PROTECTED_PATTERNS` wording
   removed), scanner detection boundary + marker-skip logging, Stop-hook exit
@@ -129,14 +136,19 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ### Known limitations / roadmap
 - No LICENSE yet (owner decision) — blocks public reuse.
-- CI cannot run until the GitHub account billing lock is cleared (owner action);
-  the workflow itself is green locally.
-- Skill routing was measured on a 9-case live sample (see the v2 audit report);
-  a full 19-case precision/recall run needs per-domain seed projects.
+- ~~CI blocked by the account billing lock~~ — cleared 2026-07-18; Actions
+  executes and is green (first real run: 29643662878).
+- Skill routing is now measured live: 19 cases × 3 runs on seeded domain repos
+  (sonnet-5) — recall 0.902, precision 0.939, conflict 0.053, stability 0.895
+  at baseline, with the single stable misroute fixed and re-verified (metrics
+  and per-run JSONL in `tests/skills/results/`; summary in `evaluated_runs`).
 - verify-done attributes all dirty files to the current session (a Stop hook has
   no reliable session-start baseline); documented rather than reworked.
 - Install profiles (minimal/python/data/full) and template-update propagation
   (Copier-style) are roadmap items.
+- Destructive-command matching is now case-insensitive, which can deny prose
+  that merely mentions SQL keywords (e.g. a commit message containing
+  "DROP TABLE …"); deny-safe by design, override documented.
 
 ## [v2.0]
 - CLAUDE.md sections 0–20; 8 domain skills; 5 enforcement hooks.

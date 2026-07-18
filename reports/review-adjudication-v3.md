@@ -64,3 +64,24 @@ produced blind of each other and agree; the finding sets overlap almost complete
 - Windows working-tree CRLF ShellCheck noise — a checkout artifact; committed LF content is what CI lints; not "fixed".
 
 **Owner actions (no repository fix possible):** clear the GitHub billing lock, then re-run Actions; choose a LICENSE; tag a release after merge; optionally enable the GitHub template flag.
+
+---
+
+## Implementation outcome (appended after Phases 4–5)
+
+Every accepted item above shipped and validated; details and evidence live in the
+post-implementation section of [claude-independent-audit-v3.md](claude-independent-audit-v3.md).
+
+| Accepted item | Outcome |
+|---|---|
+| verify-done strict-safe + toolchain guards | Fixed (`b259fd3`); VD6–VD10 green incl. real pass/fail checkers, polyglot, missing binary |
+| jq-built ask JSON (both hooks) + jq-validating tests | Fixed (`d13809e`, `679ee76`); PFH1–6 hostile-basename cases green |
+| rm/clean/SQL coverage + dependency remove/upgrade asks | Fixed (`d13809e`); BD20–35 + ASK4–17 + AL1–11 pin deny/ask/restore behavior |
+| claude-init atomicity + name safety | Fixed (`11795d9`); BOOT4–8 green |
+| settings.json validator timeouts | Added (`fc1f171`); SET3 gate |
+| CI determinism | Landed (`4fa28d9`) — and the owner cleared the billing lock mid-cycle: run 29643662878 is the first real Actions execution, all steps green |
+| Routing harness + repeated measurement | Landed (`0455277`, `870ee46`): 19×3 baseline (recall .902 / precision .939 / conflict .053 / stability .895); single stable misroute fixed via repository-cleanup description disambiguation with a new recall-pinning fixture case |
+| Docs sync + "38 skills" erratum | Landed (`8b80f4d`) |
+
+Rejected items remained unchanged, as adjudicated. Score movement: 7.6 → **8.8** (rubric table in
+the audit report's post-implementation section).
