@@ -6,9 +6,13 @@
 #   CLAUDE_TEMPLATE_DIR=/bar claude-init <name>   # template cloned elsewhere
 #
 # Failure-atomic: the project is assembled and validated in a temporary
-# sibling directory and only renamed to <name> after the hook installer
-# succeeds. A failed bootstrap leaves no destination, no temp dir, and the
-# caller's working directory untouched (all cd's happen in a subshell).
+# sibling directory and only renamed to <name> after every copy AND the hook
+# installer succeed. A failed bootstrap leaves no destination, no temp dir, and
+# the caller's working directory untouched (all cd's happen in a subshell).
+# Limitation: a process KILLED mid-bootstrap (SIGINT/SIGKILL) can leave a
+# `.claude-init.XXXXXX` directory under the destination root — safe to delete.
+# (No trap is installed: this function is *sourced*, so a trap here would
+# mutate the caller's shell.)
 
 claude-init() {
   local TEMPLATE="${CLAUDE_TEMPLATE_DIR:-$HOME/Claude_Project/main_template}"
@@ -61,20 +65,35 @@ claude-init() {
   # .gitignore/.gitattributes are required root protections: without them,
   # `git add -A` below would stage .env / machine-local state, and .sh hooks
   # could be checked out CRLF on Windows and break bash.
-  # install.sh MUST be the last command in this subshell: because the subshell
-  # is the operand of `if !`, bash ignores `set -e` inside it, so failure
-  # propagation relies on install.sh's status being the subshell's status.
+  # The steps are `&&`-chained, NOT `set -e`: this subshell is the operand of
+  # `if !`, a context where bash ignores `-e` entirely (even a `set -e` issued
+  # inside it) — so with plain command sequencing, a failed `cp CLAUDE.md`
+  # would be masked by a later `install.sh` exit 0 and an incomplete project
+  # would publish with a success message. `&&` short-circuits regardless of
+  # `set -e` context, so the first failure is the subshell's status.
   if ! (
-    set -e
-    cp "$TEMPLATE/CLAUDE.md" "$tmp/"
-    cp -r "$TEMPLATE/.claude" "$tmp/"
-    cp "$TEMPLATE/.gitignore" "$tmp/"
-    cp "$TEMPLATE/.gitattributes" "$tmp/"
-    cd "$tmp"
-    bash .claude/hooks/install.sh
+    cp "$TEMPLATE/CLAUDE.md" "$tmp/" \
+      && cp -r "$TEMPLATE/.claude" "$tmp/" \
+      && cp "$TEMPLATE/.gitignore" "$tmp/" \
+      && cp "$TEMPLATE/.gitattributes" "$tmp/" \
+      && cd "$tmp" \
+      && bash .claude/hooks/install.sh
   ); then
     rm -rf "$tmp"
     echo "✗ Bootstrap failed — cleaned up; nothing was created at $dest."
+    return 1
+  fi
+
+  # Belt-and-braces: never publish a staged tree that is missing a required
+  # artifact, no matter how a future edit re-sequences the block above.
+  local req
+  local missing_req=()
+  for req in CLAUDE.md .claude/hooks/install.sh .gitignore .gitattributes; do
+    [[ -e "$tmp/$req" ]] || missing_req+=("$req")
+  done
+  if (( ${#missing_req[@]} > 0 )); then
+    rm -rf "$tmp"
+    echo "✗ Bootstrap failed — staged project missing: ${missing_req[*]}; nothing was created at $dest."
     return 1
   fi
 
