@@ -22,12 +22,17 @@ fi
 # command position so substrings of other words (confirm, npm) can never match.
 # The dangerous-target patterns below append what the recursion aims at.
 RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*'
-# Command-start anchor also allows a path prefix (`/bin/rm`) or an alias-escape
-# (`\rm`): the char before `rm` may be start-of-string, a shell separator, `/`,
-# or `\`. A letter before `rm` (e.g. `confirm`) still cannot match.
+# Command-word spellings, two alternatives:
+#  1. bare `rm` — the char before it may be start-of-string, a shell separator,
+#     `/` (path prefix: /bin/rm) or `\` (alias escape: \rm); an optional
+#     closing quote directly AFTER it catches quoted paths (`"/bin/rm" -rf`).
+#  2. fully-quoted bare name (`'rm' -rf`, `"rm" -rf`) — quotes required on
+#     BOTH sides of rm, so prose like `echo 'rm -rf /'` (no quote directly
+#     after rm) still cannot match. A letter before `rm` (confirm) never matches.
+RM_WORD="((^|[[:space:];|&/\\])rm[\"']?|(^|[[:space:];|&])[\"']rm[\"'])"
 # A trailing `(--[[:space:]]+)?` lets the idiomatic end-of-options marker sit
 # between the flags and the target (`rm -rf -- /`).
-RM_REC="(^|[[:space:];|&/\\])rm[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+(--[[:space:]]+)?"
+RM_REC="${RM_WORD}[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+(--[[:space:]]+)?"
 
 # shellcheck disable=SC2016  # single quotes are intentional: these are regexes,
 # the literal '\$HOME' must NOT be shell-expanded.
@@ -37,7 +42,7 @@ DESTRUCTIVE_PATTERNS=(
   # Filesystem
   "${RM_REC}/"                                            # rm -rf /abs/path (any flag spelling)
   "${RM_REC}\\*"                                          # rm -rf *
-  "${RM_REC}[\"']?\\\$HOME"                               # rm -rf $HOME (quoted or not)
+  "${RM_REC}[\"']?\\\$\\{?HOME\\}?"                       # rm -rf $HOME / ${HOME} (quoted or not)
   "${RM_REC}~"                                            # rm -rf ~
   'rm[[:space:]]+--no-preserve-root'                      # explicit override
   'find[[:space:]].*-delete'                              # find ... -delete
@@ -55,7 +60,8 @@ DESTRUCTIVE_PATTERNS=(
   # Git destructive
   'git[[:space:]]+push[[:space:]]+.*--force'              # force push
   'git[[:space:]]+push[[:space:]]+.*-f([[:space:]]|$)'    # short -f
-  'git[[:space:]]+push[[:space:]]+.*[[:space:]]\+[A-Za-z0-9_/]'  # force via +refspec (git push origin +main)
+  # force via +refspec, incl. a quoted refspec: git push origin +main / "+main"
+  "git[[:space:]]+push[[:space:]]+.*[[:space:]][\"']?\\+[A-Za-z0-9_/]"
   'git[[:space:]]+reset[[:space:]]+--hard'                # hard reset
   # clean needs BOTH -f and -d, in either order, same cluster or split
   'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*(f[a-zA-Z]*d|d[a-zA-Z]*f)'
@@ -66,10 +72,16 @@ DESTRUCTIVE_PATTERNS=(
 
   # Database. DELETE table-name class includes . [ ] so schema-qualified and
   # bracketed forms (dbo.Users, [dbo].[Users]) are covered; a WHERE clause still
-  # breaks the match (the name is not immediately followed by ';').
+  # breaks the match (the name is not immediately followed by ';' or line end).
   'DROP[[:space:]]+(TABLE|DATABASE|SCHEMA|VIEW|PROC|PROCEDURE|INDEX|FUNCTION|TRIGGER)' # DROP object
   'TRUNCATE[[:space:]]+TABLE'                             # TRUNCATE
-  'DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*;' # DELETE without WHERE
+  'DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*;' # DELETE without WHERE, ;-terminated
+  # DELETE without WHERE that simply ENDS the command (no semicolon). The line
+  # must end right after the table name — a closing quote is deliberately NOT
+  # matched, so documentation text (echo "DELETE FROM users", a commit message)
+  # stays allowed; quote-wrapped client strings without ';' remain uncovered
+  # (documented residual, see hooks README).
+  'DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*$' # DELETE without WHERE, end-of-command
 
   # Cluster / cloud
   'kubectl[[:space:]]+delete[[:space:]]+(namespace|ns)[[:space:]]'
@@ -92,13 +104,18 @@ DESTRUCTIVE_PATTERNS=(
 # `npm install <pkg>`, not just --save.
 ASK_PATTERNS=(
   # -- add / install a new package --
-  'npm[[:space:]]+install[[:space:]]+[@a-zA-Z]'           # npm install <pkg> or @scope
-  'npm[[:space:]]+i[[:space:]]+[@a-zA-Z]'                 # npm i <pkg> shorthand
+  # Options may come FIRST (npm install --save-dev lodash, npm i -D x,
+  # npm install -g tsc): skip any option words, then require a package name.
+  # A bare/options-only `npm install` (lockfile restore) still has no package
+  # token after the options, so it stays allowed.
+  "npm[[:space:]]+(install|i)[[:space:]]+(-{1,2}[A-Za-z][A-Za-z-]*[[:space:]]+)*[@a-zA-Z]"
   'yarn[[:space:]]+add[[:space:]]'
   'pnpm[[:space:]]+add[[:space:]]'
   'bun[[:space:]]+add[[:space:]]'                         # Bun (growing)
-  'pip[[:space:]]+install[[:space:]]+[^-]'                # pip install <pkg> (allows -e/-r)
-  'pip3[[:space:]]+install[[:space:]]+[^-]'
+  'pip3?[[:space:]]+install[[:space:]]+[^-]'              # pip install <pkg> (allows -e/-r)
+  # pip option-first install into the user site (a new-package decision, not a
+  # restore; -r/-e/-c restores don't carry --user in this template's flows).
+  'pip3?[[:space:]]+install[[:space:]]+.*--user([[:space:]]|$)'
   'poetry[[:space:]]+add[[:space:]]'
   'uv[[:space:]]+add[[:space:]]'                          # uv (modern Python)
   'cargo[[:space:]]+add[[:space:]]'
@@ -160,5 +177,25 @@ for pattern in "${ASK_PATTERNS[@]}"; do
     exit 0
   fi
 done
+
+# CLAUDE.md §2 forbids direct commits to protected branches. Enforced as a
+# low-noise ASK (not deny): a solo main-branch flow stays possible with one
+# in-chat approval, and feature-branch commits are untouched. Plain `git push`
+# deliberately stays in Claude Code's normal permission flow (hooks README
+# tier table) — an ask here would just duplicate that prompt.
+if echo "$CMD" | grep -qE '(^|[[:space:];|&])git[[:space:]]+commit([[:space:]]|$)'; then
+  BRANCH=$(git -C "${CLAUDE_PROJECT_DIR:-.}" branch --show-current 2>/dev/null || true)
+  case "$BRANCH" in
+    main|master|production|release/*)
+      if check_override "block-destructive"; then
+        exit 0  # Override active; allowed but logged.
+      fi
+      log_event "ASK" "protected-branch-commit" "git commit while on '$BRANCH'"
+      jq -cn --arg branch "$BRANCH" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:("You are on protected branch '\''" + $branch + "'\'' (CLAUDE.md §2: no direct commits to protected branches). Approve to commit here anyway, or switch to a feature branch.")}}'
+      exit 0
+      ;;
+  esac
+fi
 
 exit 0
