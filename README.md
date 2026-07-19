@@ -39,4 +39,5 @@ suite any time with `bash tests/hooks/run-tests.sh`.
 
 ## License
 
-Not yet licensed — until the owner adds a LICENSE file, all rights reserved.
+Licensed under the Apache License, Version 2.0.
+See [LICENSE](LICENSE).
