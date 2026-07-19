@@ -18,7 +18,7 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `-- /`, `$HOME`/`${HOME}` targets), force-push (incl. quoted `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified, with or without a trailing `;` at end-of-command), etc.; **asks** for dependency install/upgrade/remove — option-first spellings included (`npm install --save-dev x`, `pip install --user x`; lockfile *restores* like `npm ci` stay allowed) and for `git commit` while on a protected branch (`main`/`master`/`production`/`release/*`) | Hard block (exit 2) / ask |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `-- /`, `$HOME`/`${HOME}` targets, and current-directory destruction: `./*`, `"./"*`, `./.??*`, `.`, `..` — named cleanup like `./build` stays allowed), force-push (incl. quoted `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified, with or without a trailing `;` at end-of-command, incl. client-wrapped `psql -c`/`mysql -e`/`sqlcmd -Q "DELETE FROM t"` without `;`), etc.; **asks** for dependency install/upgrade/remove — option-first spellings included (`npm install --save-dev x`, `pip install --user x`) and env-redirected installs (`npm install --prefix D pkg`, `pip install --target D pkg`, `--no-deps`, `--index-url`); lockfile *restores* like `npm ci` stay allowed — and for `git commit` while on a protected branch (`main`/`master`/`production`/`release/*`) | Hard block (exit 2) / ask |
 | `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*`, credentials, `id_rsa`, `*.key`/`*.p12`/`*.pfx`, `.git/`) → hard block — **all basenames case-folded** (`ID_RSA` gates like `id_rsa`; Windows/macOS treat them as the same file); CI/infra/migrations/lockfiles/**both** settings layers (`settings.json` **and** `settings.local.json`)/hooks/`*.tf`/`*.pem`/`.netrc`/the whole `.github/actions/` subtree/`.gitmodules` → **ask** | Deny / ask |
 | `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
 | `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
@@ -32,12 +32,27 @@ CLAUDE.md §2 says several classes of command "require explicit user confirmatio
 
 | Tier | Behavior | Examples |
 |---|---|---|
-| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, `$HOME`/`${HOME}`), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated **or** ending the command with no `;`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
-| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings (lockfile *restores* like `npm ci` are allowed); `git commit` while on `main`/`master`/`production`/`release/*` (CLAUDE.md §2) |
-| **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here, so still surfaced to you by Claude Code, never silently executed |
-| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; a quote-wrapped client string without `;` (`psql -c 'DELETE FROM users'`) — the quote boundary is what keeps documentation text (`echo "DELETE FROM users"`, a commit message) allowed |
+| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, `$HOME`/`${HOME}`), current-directory destruction (`rm -rf ./*`, `"./"*`, `./.??*`, `.`, `..` — named cleanup `rm -rf ./build` stays allowed), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated, ending the command, **or** client-wrapped without `;`: `psql -c`/`mysql -e`/`sqlcmd -Q "DELETE FROM t"`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
+| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings and env-redirected installs (`--prefix`/`--target`/`--no-deps`/`--index-url` — a non-default index is a supply-chain decision even for a restore); lockfile *restores* like `npm ci` are allowed; `git commit` while on `main`/`master`/`production`/`release/*` (CLAUDE.md §2) |
+| **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here. Surfaced by Claude Code's own permission prompt **unless the user has pre-allowlisted the command** in their permission settings; the hook layer adds no second gate for these |
+| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; SQL through clients whose statement is a positional argument (`sqlite3 db "DELETE FROM x"`) — the psql/mysql/sqlcmd flag forms are covered, and the quote boundary still keeps documentation text (`echo "DELETE FROM users"`, a commit message) allowed |
 
 The hook is deliberately conservative: a documentation string that merely *mentions* `DROP TABLE` (an `echo` or a commit message) is blocked too. False positives are cheaper than a real disaster; override or reword.
+
+**Four confirmation levels, kept distinct.** CLAUDE.md §2's "explicit user
+confirmation in the current message" is a *prose norm for Claude*, and it is
+enforced to different degrees:
+1. **Deterministic hook deny/ask** (tiers 1–2 above) — enforced regardless of
+   what Claude decides.
+2. **Claude Code's permission prompt** (tier 3) — enforced by the app, *per
+   your permission settings*.
+3. **User pre-allowlists** (`permissions.allow` in settings) — a pre-allowlisted
+   `git push` runs with **no prompt at all**; hooks here deliberately do not
+   duplicate that gate.
+4. **The §2 in-chat confirmation norm** — prose-level (~70–90% compliance),
+   deterministically enforced **only** where a tier-1/2 pattern exists.
+None of these guarantees another; if you allowlist a mutating command, only
+tiers 1–2 still stand between you and it.
 
 ### When hooks disagree on one edit
 
@@ -94,7 +109,7 @@ The log is **local to each developer's machine.** This is fine for tuning but is
   would be a partial exposure with zero information gain).
 - ❌ **Not** the full shell command — only the regex pattern that matched.
 
-This separation is intentional: stderr is for Claude to adapt right now; the log is for humans to tune over time. If you add new hooks, follow the same rule — sensitive content stays in stderr, not in the log. Treat `.claude/logs/` as you would any local debug artifact: still don't paste it into bug reports without redaction.
+This separation is intentional: stderr is for Claude to adapt right now; the log is for humans to tune over time. If you add new hooks, follow the same rule — actionable *context* (paths, pattern names) goes to stderr, the log gets only the pattern name, and the secret **value** goes to *neither* destination. Treat `.claude/logs/` as you would any local debug artifact: still don't paste it into bug reports without redaction.
 
 **Log rotation.** These logs grow unboundedly. If they get large (>50 MB), rotate them (`mv hooks.log hooks.log.$(date +%Y%m)`) or truncate (`: > hooks.log`). The `.gitignore` in `.claude/logs/` excludes them from version control.
 
