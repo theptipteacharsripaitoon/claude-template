@@ -48,6 +48,28 @@ jobs:
         run: |
           python -m pip install --quiet 'pyyaml==6.0.2'
           python tests/skills/check_catalog.py
+      - name: Offline routing tests (scoring math + stream-JSON parser fixtures)
+        run: python tests/skills/routing/test_run_eval.py
+      - name: Committed routing-results consistency
+        run: python tests/skills/routing/test_results_consistency.py
+      - name: Python compilation
+        run: python -m py_compile tests/skills/check_catalog.py tests/skills/routing/run_eval.py tests/skills/routing/test_run_eval.py tests/skills/routing/test_results_consistency.py tests/check_links.py
+      - name: Workflow + routing-fixture YAML validation
+        run: |
+          python - <<'EOF'
+          import io, yaml
+          for path in ('.github/workflows/test.yml', 'tests/skills/trigger-cases.yaml'):
+              yaml.safe_load(io.open(path, encoding='utf-8'))
+              print(path, 'parses')
+          EOF
+      - name: Generated-file cleanliness (no tracked bytecode/artifacts)
+        run: |
+          if git ls-files '*.pyc' | grep -q . || git ls-files | grep -qE '(^|/)__pycache__(/|$)'; then
+            echo "tracked generated files found"; exit 1
+          fi
+          echo "no tracked bytecode"
+      - name: Repo-wide Markdown link check
+        run: python tests/check_links.py
       # The live skill-routing evaluation (tests/skills/routing/run_eval.py)
       # needs an authenticated Claude Code session and real model calls, so it
       # runs locally, not in CI; its committed results live in
