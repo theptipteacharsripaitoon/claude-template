@@ -219,3 +219,19 @@ trade for a policy file). No change.
   CONTRIBUTING/SECURITY; archive layout; template-repo flag.
 
 This report is committed **before** any source file is modified.
+
+---
+
+## Implementation status (added post-Phase-4)
+
+All **Confirmed** findings were implemented with a failing-first regression test
+(commits `ba00728`, `295546c`, `ca90acb`, `99e0c68`, `df376a4`, `653b04e`,
+`b1ae106`, `f2cb449`, `7a7a6fc`; full mapping in
+`claude-independent-audit-v4.md` § Post-implementation). **Partly-confirmed**
+findings were resolved by documentation, not code change: the strict zero-check
+exit stayed at 0 (blocking-on-absence adds no enforcement) with the semantics now
+explicit in the hook README; the diff-size/approval precedence and the deny/ask/
+normal-flow/uncovered command tiers are documented there too. **Rejected**
+findings were left unchanged as argued. Hook suite 143/143, routing scoring
+6/6, ShellCheck clean, and CI green on the pushed commit `7a7a6fc`
+(run 29658887577).

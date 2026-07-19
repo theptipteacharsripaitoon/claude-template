@@ -434,3 +434,124 @@ test (no privileged token). **CI hygiene is a clear strength.**
   template-repository flag; decide any new release tag.
 
 *End of Phase 1. This report is committed before opening `external-review-v4.md`.*
+
+---
+
+# Post-implementation (Phases 3–5)
+
+Added after the fixes. The Phase-1 findings above are the historical pre-change
+record and are **not** rewritten.
+
+## Fixes landed (commit → defect)
+
+| Commit | Fix | Defects |
+|---|---|---|
+| `ba00728` | Stop hook detects the work tree via `git rev-parse`; `--untracked-files=all`; "uncommitted" wording | D1, D2, D3 |
+| `295546c` | scan-secrets prints no matched-secret material | D4 |
+| `ca90acb` | log_event escapes control chars in fields | D5 |
+| `99e0c68` | block-destructive: rm prefixes/`--`, schema-qualified DELETE, DROP object variants, `+refspec` | D8, D9, D10 |
+| `df376a4` | protect-files: key/cert deny, cred/action.yml/.gitmodules/`*.tf` ask, case-folded `.env` | D11, D12, D13 |
+| `653b04e` | claude-init prunes machine-local state; `.gitignore` adds `.claude/worktrees/` | D6, D7 |
+| `b1ae106` | 36 new hook regressions + scratch EXIT trap | (coverage) |
+| `f2cb449` | run_eval dynamic clusters, dup-id reject, overwrite guard, thresholds, cc_version fallback + scoring unit tests | D14 harness, D15 |
+| `7a7a6fc` | HOW-TO/ENFORCEMENT/README doc alignment; `§0-20`; NotebookEdit; tier + precedence docs; stray NUL removed | D16, D17 |
+
+**Not changed (evidence-backed rejections):** side-effect skills kept
+model-invocable; fixture `must_not_load` precision boundaries kept; no 31-skill
+redesign; CLAUDE.md "open SKILL.md" instruction kept; CLAUDE.md not trimmed.
+Rationale in `review-adjudication-v4.md`.
+
+## Verification results
+
+| Check | Result |
+|---|---|
+| Hook regression suite | **143/143 pass** (107 prior + 36 new) |
+| Routing scoring unit tests | **6/6 pass** (`test_run_eval.py`, offline) |
+| Skill catalog | 37 skills, ALL CHECKS PASS |
+| ShellCheck v0.10.0 (`-x -P .claude/hooks`, Docker) | clean |
+| Installer end-to-end | pass |
+| settings.json / workflow YAML / trigger YAML | valid |
+| Markdown links (changed docs) | resolve |
+| CI on pushed commit `7a7a6fc` | **success** — run 29658887577, all steps green (hook suite, installer, ShellCheck, catalog) |
+
+The command-hardening was demonstrated live: the very commit that added the
+`+refspec` force-push pattern was itself blocked because its message contained
+`git push origin +main` — the documented commit-message false positive, resolved
+by committing via a message file.
+
+## Regression evidence (defect → failing-first → fixed)
+
+Each fix had a test that failed against the unmodified hook, then passed:
+- Worktree Stop (WT1): unmodified → `exit 0 reminder=0`; fixed → reminder emitted.
+- Untracked-in-new-dir (VD11): unmodified counted 1 where 2 exist; fixed counts 2.
+- Secret output (SS11): unmodified leaked `AKIA1234…`; fixed → no secret substring anywhere.
+- Log injection (LOG1): unmodified produced 2 log lines from one event; fixed → 1 escaped line.
+- Command bypasses (BD40–54): 12 previously-ALLOW cases now DENY; safe/WHERE-guarded cases still ALLOW.
+- Path gating (PFK/PFC/PFI): key/cert deny, cred/infra ask, `.ENV` deny; lookalikes (`keyboard.ts`) still clear.
+- Bootstrap (BOOT9): unmodified leaked all 5 local-state paths; fixed → none leak, atomicity preserved (BOOT7 still green).
+
+## Post-change score — 8.7 / 10
+
+| Category | Pre | Post | Why |
+|---|---|---|---|
+| Technical correctness | 7.5 | 8.8 | worktree/bootstrap/log/secret defects fixed and regression-locked; CI green |
+| Skill trigger quality | 8.0 | 8.6 | current-descriptions full run (see §Routing); cc_version now auto-captured; still 20/37 skills covered |
+| Hook correctness | 6.5 | 8.9 | every headline hook defect fixed + tested |
+| Conflict avoidance | 8.5 | 9.0 | measured conflict 0 on current descriptions |
+| Safety & permissions | 7.5 | 8.8 | key/cert/cred gating, case-fold `.env`, `+refspec`, schema-SQL |
+| Testing & evaluation | 7.5 | 8.9 | 36 hook regressions + 6 scoring unit tests + full routing run |
+| Context efficiency | 8.5 | 8.5 | unchanged (justified, not trimmed) |
+| Team usability | 8.0 | 8.6 | HOW-TO fixed; tier/precedence docs |
+| Maintainability | 8.5 | 8.8 | dynamic clusters, dup-id reject, cleaner docs |
+| Public-template readiness | 6.0 | 6.2 | still no LICENSE (owner action); docs improved |
+
+Weighted ≈ **8.7**. Satisfies the 9.0 **correctness** gate (no open P0/P1; Stop
+works in worktrees; structured output valid; secrets never printed/persisted;
+bootstrap excludes local state; policy/hooks documented in agreement; routing
+complete & current; CI green on the pushed commit; context justified; docs match).
+It does **not** reach 9.0+ on the rubric because public-template readiness
+(LICENSE/CONTRIBUTING/SECURITY) and full 37-skill routing coverage remain — both
+owner actions or out of the evidence-backed scope. Not claiming 9.5 (not all 37
+skills have positive/negative/ambiguous/conflict cases; LICENSE not selected).
+
+## Routing full-run metrics (current descriptions, 20×3)
+
+Run `routing-20260718-195349` — the fresh full-fixture evaluation D14 required
+(all 20 cases × 3 runs = 60 rows, 0 errored). `cc_version` is now auto-captured
+(the D15 fallback), confirming provenance from the stream:
+
+| Metric | Baseline (pre-fix, 19 cases) | Current (20 cases) |
+|---|---|---|
+| recall | 0.902 | **0.963** |
+| precision | 0.939 | **1.000** |
+| conflict_rate | 0.053 | **0.000** |
+| no_load_rate | 0.039 | 0.037 |
+| stability | 0.895 | 0.900 |
+| model / cc_version | claude-sonnet-5 / (null) | claude-sonnet-5 / 2.1.214 |
+
+Independently recomputed from the JSONL (not trusting the summary): identical
+values. Precision is now 1.0 (no forbidden skill ever loaded — the pre-fix
+`layout-root-mess → repository-cleanup` conflict is gone). The only recall gap is
+**no-load** on 2 of 60 runs (`review-api-breaking`, `dag-add-retry` each missed
+once by loading nothing — the model handled the task without the skill); never a
+mis-load. Stability 0.900 (18/20 cases identical across their 3 runs).
+
+## Final CI / PR / merge state
+
+- Branch `claude/template-audit-v4-e9e221` pushed; **PR #10 → `main` merged**
+  (2026-07-18T20:06Z), head `7a7a6fc`.
+  https://github.com/theptipteacharsripaitoon/claude-template/pull/10
+- CI **green on the pushed/merged commit `7a7a6fc`**: push run 29658887577 and PR
+  run 29659034451 both `completed/success` (hook suite, installer, ShellCheck
+  v0.10.0, catalog).
+- Post-merge re-verification on the working tree (this run): hook suite
+  **143/143**, routing scoring **6/6**, catalog **37 ALL PASS**, ShellCheck
+  v0.10.0 `-x -P` **exit 0**. The routing full run and these final metrics land as
+  a documentation/evidence follow-up (PR #10 having already merged).
+
+## Owner actions still required (not done on the owner's behalf, by instruction)
+
+- Select and add a LICENSE (no license chosen — explicit constraint).
+- Optionally add CONTRIBUTING.md / SECURITY.md and set the GitHub template-repo flag.
+- Optionally create a release tag (not created — explicit constraint).
+- Extend routing coverage from 20 to all 37 skills if the 9.5 bar is targeted.

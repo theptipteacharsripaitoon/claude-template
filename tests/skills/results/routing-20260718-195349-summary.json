@@ -1,0 +1,15 @@
+{
+  "date": "20260718-195349",
+  "cc_version": "2.1.214",
+  "model": "claude-sonnet-5",
+  "runs_per_case": 3,
+  "results_file": "routing-20260718-195349.jsonl",
+  "runs_total": 60,
+  "runs_errored": 0,
+  "recall": 0.963,
+  "precision": 1.0,
+  "conflict_rate": 0.0,
+  "no_load_rate": 0.037,
+  "stability": 0.9,
+  "cases": 20
+}
