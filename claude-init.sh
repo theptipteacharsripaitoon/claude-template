@@ -8,11 +8,17 @@
 # Failure-atomic: the project is assembled and validated in a temporary
 # sibling directory and only renamed to <name> after every copy AND the hook
 # installer succeed. A failed bootstrap leaves no destination, no temp dir, and
-# the caller's working directory untouched (all cd's happen in a subshell).
-# Limitation: a process KILLED mid-bootstrap (SIGINT/SIGKILL) can leave a
-# `.claude-init.XXXXXX` directory under the destination root — safe to delete.
-# (No trap is installed: this function is *sourced*, so a trap here would
-# mutate the caller's shell.)
+# the caller's working directory untouched (the assembly `cd` runs in a
+# subshell; on SUCCESS the function intentionally cd's into the new project
+# and prints "Currently at:").
+# Limitations:
+#   - A process KILLED mid-bootstrap (SIGINT/SIGKILL) can leave a
+#     `.claude-init.XXXXXX` directory under the destination root — safe to
+#     delete. (No trap is installed: this function is *sourced*, so a trap
+#     here would mutate the caller's shell.)
+#   - The prune list below strips KNOWN machine-local state; an unknown future
+#     file under the template's `.claude/` is copied into new projects. Keep
+#     the template checkout clean (a fresh clone always is).
 
 claude-init() {
   local TEMPLATE="${CLAUDE_TEMPLATE_DIR:-$HOME/Claude_Project/main_template}"

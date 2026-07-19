@@ -4,6 +4,68 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ## [Unreleased]
 
+### Fixed (sixth cycle)
+- **verify-done (P1)**: Bun's modern text lockfile `bun.lock` (default since
+  Bun 1.2) now selects bun — previously only `bun.lockb` did, so new Bun
+  projects were verified with npm or not at all. The Node test check runs
+  `$PM run test` instead of `$PM test`: identical for npm/pnpm/yarn, and the
+  only correct form for Bun (`bun test` invokes the native runner, which
+  ignores the package.json script the check is gated on — real Bun 1.3.14
+  exits 1 "No tests found" on a healthy script-only project).
+- **protect-files (P1)**: directory-segment comparisons are case-folded like
+  basenames — `.GIT/config`, `.Secrets/`, `.CLAUDE/settings.local.json`,
+  `MIGRATIONS/`, `.GITHUB/actions/` variants address the SAME files on
+  Windows/macOS (proven via NTFS same-file writes) and previously bypassed
+  the deny/ask tiers. Original casing kept in messages; on case-sensitive
+  Linux a distinct `.GIT/` now errs toward ask/deny (over-caution by design).
+- **check-diff-size**: honors `CLAUDE_HOOK_OVERRIDE` in the hard-block branch
+  (logged), as the hooks README always documented; previously the only
+  blocking hook that ignored the override mechanism.
+
+### Security (sixth cycle)
+- **block-destructive**: current-directory destruction denied — `rm -rf ./*`,
+  `-- ./*`, `./.??*`, `"./"*`, bare `.??*` (which really delete; measured in
+  disposable sandboxes) plus the inert-but-intent-destructive `.`, `./`, `..`
+  (GNU rm refuses those — reproduced, not assumed). Named relative cleanup
+  (`rm -rf ./build`, `../temporary-build`) stays allowed.
+- **block-destructive**: client-wrapped unguarded DELETE without `;` denied —
+  `psql -c` / `mysql -e` / `sqlcmd -Q` with either quote style and
+  intervening options. WHERE-guarded statements and prose
+  (`echo "DELETE FROM users"`, commit messages) stay allowed; clients taking
+  SQL as a positional argument (sqlite3) remain a documented residual.
+- **block-destructive**: env-redirected installs now ask —
+  `npm install --prefix DIR pkg`, `pip install --target DIR pkg`,
+  `pip install --no-deps pkg`, and any `pip install --index-url …`
+  (non-default index = supply-chain decision, deliberately including
+  restores). Bare `npm install --prefix DIR` and all other restores stay
+  allowed.
+
+### Added (sixth cycle)
+- Hook regression suite 187 → 228: bun lockfile/command matrix driven by a
+  stub bun on a **restricted PATH** (VD9 is now host-independent — bun absent
+  by construction, present via stub; exact `bun run test` argv asserted),
+  current-directory rm globs with named-cleanup allows, client-wrapped SQL
+  with WHERE/prose controls, env-redirected installs with restore control,
+  protected-path case variants across Write/Edit/NotebookEdit, and diff-size
+  override in both directions.
+- Sixth-cycle blind audit + adjudication reports with measured evidence
+  (real-Bun Docker semantics, NTFS case-equivalence, disposable-directory rm
+  behavior, 251 MB bootstrap-copy timing, live false-positive profile);
+  consolidated owner-decision proposals
+  (`reports/proposal-owner-decisions-v6.md` — license, release/version
+  policy, community/security docs; nothing activated, owner decisions).
+
+### Changed (sixth cycle)
+- hooks README: tier table reflects the new coverage; the four confirmation
+  levels (hook deny/ask → permission prompt → user pre-allowlist → CLAUDE.md
+  §2 in-chat norm) are documented as distinct — a pre-allowlisted mutating
+  command is NOT re-prompted, and the old "never silently executed" claim is
+  corrected; new-hook guidance now says secret values go to *neither* stderr
+  nor the log (context to stderr, pattern names to the log).
+- claude-init header: success-path `cd` documented precisely (the subshell
+  claim now scopes to assembly); unknown future `.claude/` local-state files
+  are named as a copy residual — keep the template checkout clean.
+
 ### Fixed (fifth cycle)
 - **claude-init (P1)**: a failed copy of `CLAUDE.md`, `.gitignore`, or
   `.gitattributes` was MASKED — the subshell is the operand of `if !`, a
