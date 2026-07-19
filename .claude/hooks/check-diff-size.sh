@@ -66,6 +66,13 @@ case "$TOOL" in
 esac
 
 if (( LINES_CHANGED >= HARD_THRESHOLD )); then
+  # The documented escape hatches (hooks README): raise CLAUDE_DIFF_BLOCK_LINES
+  # or set CLAUDE_HOOK_OVERRIDE. The override is honored here like in every
+  # other blocking hook — deliberate and logged, never silent (v6; previously
+  # this hook ignored it, contradicting the README).
+  if check_override "check-diff-size"; then
+    exit 0  # Override active; allowed but logged.
+  fi
   log_block \
     "very large diff" \
     "$TOOL on $FILE would change ~$LINES_CHANGED lines (>= $HARD_THRESHOLD). This is almost certainly a rewrite, not a focused change." \
