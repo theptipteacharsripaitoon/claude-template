@@ -31,8 +31,15 @@ fi
 # Normalize: backslashes -> forward slashes; wrap in slashes so directory
 # components can be matched as exact, slash-bounded segments (`/infra/` will
 # not match `infrastructure`).
+# Case-normalization strategy (one rule, applied everywhere): every BASENAME
+# comparison in this hook — allowlist, deny names, ask names, extensions — is
+# case-folded, because on this repo's primary platforms (Windows/macOS) case
+# variants address the SAME file, so `ID_RSA` must gate exactly like `id_rsa`.
+# Directory-segment matching stays case-sensitive (folders are conventions,
+# not secrets). User-facing reasons always print $FILE in its original casing.
 FILE_N="${FILE//\\//}"
 BASE="${FILE_N##*/}"
+BASE_LC="${BASE,,}"
 SEG="/${FILE_N#/}/"
 
 # --- Allowlist: committed env templates are editable documentation ------------
@@ -44,7 +51,7 @@ ALLOWLIST_BASE=(
   ".env.test.example"
 )
 for allowed in "${ALLOWLIST_BASE[@]}"; do
-  if [[ "$BASE" == "$allowed" ]]; then
+  if [[ "$BASE_LC" == "$allowed" ]]; then
     exit 0  # explicit template/sample; editable
   fi
 done
@@ -52,25 +59,25 @@ done
 # --- Helpers ------------------------------------------------------------------
 # True if the path contains an exact directory segment (or adjacent segments).
 has_segment() { [[ "$SEG" == *"/$1/"* ]]; }
-# True if the basename equals one of the given names.
+# True if the basename equals one of the given names (case-folded; the names
+# passed in are written lowercase except proper-noun files, which are folded).
 base_is() {
   local b
-  for b in "$@"; do [[ "$BASE" == "$b" ]] && return 0; done
+  for b in "$@"; do [[ "$BASE_LC" == "${b,,}" ]] && return 0; done
   return 1
 }
 
 # --- DENY: secrets and git internals (hard block) -----------------------------
 DENY=false
-# .env and any .env.<suffix>. Case-folded: on Windows/macOS (case-insensitive
-# filesystems) `.ENV` and `.env` are the SAME file, so a case variant must not
-# slip past. Allowlisted templates already returned above.
-BASE_LC="${BASE,,}"
+# .env and any .env.<suffix>. Allowlisted templates already returned above.
 if [[ "$BASE_LC" == ".env" || "$BASE_LC" == .env.* ]]; then DENY=true; fi
 base_is "secrets.yaml" "secrets.yml" "credentials.json" "credentials.yaml" && DENY=true
-# Private keys and certificates are secret files by name — deny by extension /
-# well-known basenames even when the scanner cannot see the (binary) contents.
+# Private-key material is a hard deny by name even when the scanner cannot see
+# the (binary) contents. Generic `*.pem` moved to ASK below: a PEM container is
+# often a PUBLIC certificate chain, and private-key CONTENT written through
+# tools is still hard-blocked by scan-secrets regardless of filename.
 case "$BASE_LC" in
-  *.pem|*.key|*.p12|*.pfx|*.keystore|*.jks) DENY=true ;;
+  *.key|*.p12|*.pfx|*.keystore|*.jks) DENY=true ;;
 esac
 base_is "id_rsa" "id_dsa" "id_ecdsa" "id_ed25519" && DENY=true
 has_segment ".secrets" && DENY=true
@@ -98,8 +105,13 @@ base_is "package-lock.json" "pnpm-lock.yaml" "yarn.lock" "uv.lock" "poetry.lock"
         "Pipfile.lock" "Cargo.lock" "go.sum" "Gemfile.lock" "composer.lock" && ASK=true
 # CI/CD
 has_segment ".github" && has_segment "workflows" && ASK=true
-# Composite/custom action definitions run in CI just like workflows do.
+# Composite/custom action definitions run in CI just like workflows do —
+# and so do the scripts they invoke, so the WHOLE .github/actions/ subtree
+# (action.yml, script.sh, index.js, …) needs approval, not just the manifest.
+{ has_segment ".github" && has_segment "actions"; } && ASK=true
 { has_segment ".github" && base_is "action.yml" "action.yaml"; } && ASK=true
+# Certificate containers (often public chains): approve rather than hard-deny.
+case "$BASE_LC" in *.pem) ASK=true ;; esac
 base_is ".gitlab-ci.yml" "Jenkinsfile" "azure-pipelines.yml" ".drone.yml" && ASK=true
 has_segment ".circleci" && ASK=true
 has_segment "buildkite" && ASK=true
@@ -126,7 +138,12 @@ has_segment "migrations" && ASK=true
 { has_segment "prisma" && has_segment "migrations"; } && ASK=true
 # Ownership / policy / enforcement layer
 base_is "CODEOWNERS" ".gitattributes" && ASK=true
-[[ "$FILE_N" == *".claude/settings.json" ]] && ASK=true
+# Both Claude Code settings layers. settings.local.json is NOT less sensitive
+# than settings.json: per the official settings docs, local scope OVERRIDES
+# project settings, its permission `allow` rules take effect without the
+# workspace-trust step, and it accepts `disableAllHooks` — i.e. an ungated
+# write here is a path to weaken hooks/permissions without approval.
+[[ "$FILE_N" == *".claude/settings.json" || "$FILE_N" == *".claude/settings.local.json" ]] && ASK=true
 has_segment ".claude" && has_segment "hooks" && ASK=true
 
 if [[ "$ASK" == "true" ]]; then

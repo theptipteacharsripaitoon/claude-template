@@ -89,6 +89,73 @@ def claude_version(claude: str) -> str | None:
     return out.split()[0] if out else None
 
 
+def parse_stream(lines: list[str]) -> dict:
+    """Pure extraction over stream-json output lines.
+
+    Returns loaded skills, model/cc_version provenance, error events, and —
+    critically — anomaly signals: `malformed` (lines that are not valid JSON
+    objects) and `saw_result` (whether a terminal `result` event arrived).
+    A parse failure must surface as an anomaly, never silently score as a
+    valid "nothing loaded" run; run_once turns anomalies into errored rows.
+    """
+    out = {
+        "loaded": [],
+        "model": None,
+        "cc_version": None,
+        "is_error": False,
+        "error": None,
+        "malformed": 0,
+        "saw_result": False,
+    }
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if not line.startswith("{"):
+            out["malformed"] += 1
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            out["malformed"] += 1
+            continue
+        if not isinstance(evt, dict):
+            out["malformed"] += 1
+            continue
+        if evt.get("type") == "system" and evt.get("subtype") == "init":
+            out["model"] = evt.get("model")
+            out["cc_version"] = evt.get("version")
+        if evt.get("type") == "assistant":
+            content = (evt.get("message") or {}).get("content") or []
+            if not isinstance(content, list):
+                out["malformed"] += 1
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use" and block.get("name") == "Skill":
+                    skill = (block.get("input") or {}).get("skill")
+                    if skill:
+                        out["loaded"].append(skill)
+        if evt.get("type") == "result":
+            out["saw_result"] = True
+            if evt.get("is_error"):
+                out["is_error"] = True
+                out["error"] = str(evt.get("result"))[:300]
+    out["loaded"] = sorted(set(out["loaded"]))
+    return out
+
+
+def stream_anomaly(parsed: dict) -> str | None:
+    """Error string when the stream itself is unusable evidence, else None."""
+    problems = []
+    if parsed["malformed"]:
+        problems.append(f"{parsed['malformed']} malformed stream line(s)")
+    if not parsed["saw_result"]:
+        problems.append("no terminal result event")
+    return "; ".join(problems) if problems else None
+
+
 def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
     row = {
         "case_id": case["id"],
@@ -140,29 +207,18 @@ def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
         row["duration_s"] = round(
             (dt.datetime.now(dt.timezone.utc) - start).total_seconds(), 1
         )
-        loaded: list[str] = []
-        for line in proc.stdout.splitlines():
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                evt = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if evt.get("type") == "system" and evt.get("subtype") == "init":
-                row["model"] = evt.get("model")
-                row["cc_version"] = evt.get("version")
-            if evt.get("type") == "assistant":
-                for block in (evt.get("message") or {}).get("content") or []:
-                    if block.get("type") == "tool_use" and block.get("name") == "Skill":
-                        skill = (block.get("input") or {}).get("skill")
-                        if skill:
-                            loaded.append(skill)
-            if evt.get("type") == "result":
-                if evt.get("is_error"):
-                    row["is_error"] = True
-                    row["error"] = str(evt.get("result"))[:300]
-        row["loaded"] = sorted(set(loaded))
+        parsed = parse_stream(proc.stdout.splitlines())
+        row["loaded"] = parsed["loaded"]
+        row["model"] = parsed["model"]
+        row["cc_version"] = parsed["cc_version"]
+        row["is_error"] = parsed["is_error"]
+        row["error"] = parsed["error"]
+        anomaly = stream_anomaly(parsed)
+        if anomaly and not row["is_error"]:
+            # An unusable stream is an ERRORED run (excluded from metrics,
+            # counted in runs_errored) — never a scored no-load.
+            row["is_error"] = True
+            row["error"] = f"stream anomaly: {anomaly}"
         if proc.returncode != 0 and not row["is_error"]:
             row["is_error"] = True
             row["error"] = f"claude exited {proc.returncode}: {proc.stderr[:300]}"
@@ -228,6 +284,11 @@ def main() -> None:
         "--fail-on-miss",
         action="store_true",
         help="exit non-zero if any non-errored run is a MISS (required skill not loaded or a forbidden one loaded)",
+    )
+    ap.add_argument(
+        "--fail-on-error",
+        action="store_true",
+        help="exit non-zero if any run errored (timeout, nonzero exit, error event, or stream anomaly)",
     )
     args = ap.parse_args()
 
@@ -306,6 +367,9 @@ def main() -> None:
         ]
         if misses:
             failures.append(f"{len(misses)} MISS run(s): {sorted(set(misses))}")
+    if args.fail_on_error and summary["runs_errored"]:
+        errs = sorted({r["case_id"] for r in rows if r["is_error"]})
+        failures.append(f"{summary['runs_errored']} errored run(s): {errs}")
     if failures:
         sys.exit("routing gate failed: " + "; ".join(failures))
 

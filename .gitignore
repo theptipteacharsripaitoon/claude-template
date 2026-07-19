@@ -5,10 +5,16 @@
 .claude/CLEANUP_PLAN.md
 .claude/CLEANUP_EXECUTION.md
 
-# Secrets — never commit (templates like .env.example ARE committed).
+# Secrets — never commit. Templates ARE committed: the re-includes below must
+# stay in lockstep with protect-files.sh's ALLOWLIST_BASE (the hook calls these
+# "committed env templates"; a name only one side knows is a policy conflict).
 .env
 .env.*
 !.env.example
+!.env.sample
+!.env.template
+!.env.dist
+!.env.test.example
 
 # Common generated noise for bootstrapped projects.
 __pycache__/

@@ -18,8 +18,8 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, `\rm`, `-- /`), force-push (incl. `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified), etc.; **asks** for dependency install/upgrade/remove (lockfile *restores* like `npm ci` stay allowed) | Hard block (exit 2) / ask |
-| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*` incl. case variants, credentials, `id_rsa`/`*.pem`/`*.key`, `.git/`) → hard block; CI/infra/migrations/lockfiles/settings/hooks/`*.tf`/`.netrc`/`action.yml`/`.gitmodules` → **ask** | Deny / ask |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `-- /`, `$HOME`/`${HOME}` targets), force-push (incl. quoted `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified, with or without a trailing `;` at end-of-command), etc.; **asks** for dependency install/upgrade/remove — option-first spellings included (`npm install --save-dev x`, `pip install --user x`; lockfile *restores* like `npm ci` stay allowed) and for `git commit` while on a protected branch (`main`/`master`/`production`/`release/*`) | Hard block (exit 2) / ask |
+| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*`, credentials, `id_rsa`, `*.key`/`*.p12`/`*.pfx`, `.git/`) → hard block — **all basenames case-folded** (`ID_RSA` gates like `id_rsa`; Windows/macOS treat them as the same file); CI/infra/migrations/lockfiles/**both** settings layers (`settings.json` **and** `settings.local.json`)/hooks/`*.tf`/`*.pem`/`.netrc`/the whole `.github/actions/` subtree/`.gitmodules` → **ask** | Deny / ask |
 | `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
 | `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
 | `verify-done.sh` | Stop | Reminds about Definition of Done if code changed | Reminder / block |
@@ -32,10 +32,10 @@ CLAUDE.md §2 says several classes of command "require explicit user confirmatio
 
 | Tier | Behavior | Examples |
 |---|---|---|
-| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, `\rm`, `rm -rf -- /`), force-push (incl. `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (incl. schema-qualified), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
-| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove (lockfile *restores* like `npm ci` are allowed) |
+| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, `$HOME`/`${HOME}`), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated **or** ending the command with no `;`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
+| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings (lockfile *restores* like `npm ci` are allowed); `git commit` while on `main`/`master`/`production`/`release/*` (CLAUDE.md §2) |
 | **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here, so still surfaced to you by Claude Code, never silently executed |
-| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call |
+| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; a quote-wrapped client string without `;` (`psql -c 'DELETE FROM users'`) — the quote boundary is what keeps documentation text (`echo "DELETE FROM users"`, a commit message) allowed |
 
 The hook is deliberately conservative: a documentation string that merely *mentions* `DROP TABLE` (an `echo` or a commit message) is blocked too. False positives are cheaper than a real disaster; override or reword.
 
@@ -88,7 +88,10 @@ The log is **local to each developer's machine.** This is fine for tuning but is
 - ✅ Pattern that matched (regex form, e.g., `AKIA[0-9A-Z]{16}`).
 - ✅ Hook name, timestamp, decision (BLOCK / WARN / OVERRIDE).
 - ✅ File paths (for protect-files / check-diff-size).
-- ❌ **Not** the matched secret value or its prefix — that goes only to Claude's stderr (one-time, ephemeral).
+- ❌ **Not** the matched secret value or its prefix — **anywhere**: the log
+  records only the pattern name, and stderr says only "value withheld" (Claude
+  already holds the content it tried to write; repeating any part of the value
+  would be a partial exposure with zero information gain).
 - ❌ **Not** the full shell command — only the regex pattern that matched.
 
 This separation is intentional: stderr is for Claude to adapt right now; the log is for humans to tune over time. If you add new hooks, follow the same rule — sensitive content stays in stderr, not in the log. Treat `.claude/logs/` as you would any local debug artifact: still don't paste it into bug reports without redaction.

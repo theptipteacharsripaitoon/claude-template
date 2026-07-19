@@ -32,9 +32,13 @@ t() { # t <id> <expected_exit> <hook> <payload> [envvar]
   else FAIL=$((FAIL+1)); printf 'FAIL %-6s want exit %s got %s\n' "$id" "$want" "$got"; fi
 }
 
-t_ask() { # exit 0 AND stdout parses as JSON carrying a structured PreToolUse ask
-  local id="$1" hook="$2" payload="$3" got=0
-  printf '%s' "$payload" | bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+t_ask() { # t_ask <id> <hook> <payload> [envvar] — exit 0 AND jq-valid PreToolUse ask
+  local id="$1" hook="$2" payload="$3" envvar="${4:-}" got=0
+  if [[ -n "$envvar" ]]; then
+    printf '%s' "$payload" | env "$envvar" bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+  else
+    printf '%s' "$payload" | bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+  fi
   # -s guard: some jq builds (msys 1.6) exit 0, not 4, on EMPTY input with -e,
   # which would let a silent allow masquerade as a valid ask.
   if [[ "$got" == "0" ]] && [[ -s "$SCRATCH/out.txt" ]] \
@@ -48,9 +52,13 @@ t_ask() { # exit 0 AND stdout parses as JSON carrying a structured PreToolUse as
   fi
 }
 
-t_noask() { # exit 0 AND stdout carries NO permission decision (plain allow)
-  local id="$1" hook="$2" payload="$3" got=0
-  printf '%s' "$payload" | bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+t_noask() { # t_noask <id> <hook> <payload> [envvar] — exit 0, NO permission decision
+  local id="$1" hook="$2" payload="$3" envvar="${4:-}" got=0
+  if [[ -n "$envvar" ]]; then
+    printf '%s' "$payload" | env "$envvar" bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+  else
+    printf '%s' "$payload" | bash "$HOOKS/$hook" >"$SCRATCH/out.txt" 2>/dev/null || got=$?
+  fi
   if [[ "$got" == "0" ]] && ! grep -q 'permissionDecision' "$SCRATCH/out.txt"; then
     PASS=$((PASS+1)); printf 'PASS %-6s allowed without ask\n' "$id"
   else
@@ -422,7 +430,9 @@ t BD54 0 block-destructive.sh "$(cmd 'git push origin main')"   # plain push sti
 
 echo "== protect-files: private-key / credential files gated =="
 t PFK1 2 protect-files.sh "$(fp '/repo/id_rsa')"
-t PFK2 2 protect-files.sh "$(fp '/repo/certs/server.pem')"
+# v5: generic *.pem is ASK, not deny — PEM containers are often PUBLIC cert
+# chains; private-key CONTENT is still hard-blocked by scan-secrets.
+t_ask PFK2 protect-files.sh "$(fp '/repo/certs/server.pem')"
 t PFK3 2 protect-files.sh "$(fp '/repo/tls.key')"
 t_ask PFK4 protect-files.sh "$(fp '/repo/.netrc')"
 t_ask PFK5 protect-files.sh "$(fp '/repo/.npmrc')"
@@ -438,6 +448,132 @@ t_ask PFI4 protect-files.sh "$(fp '/repo/modules/vpc/network.tf')"
 echo "== protect-files: still no substring false positives after additions =="
 t PFC3 0 protect-files.sh "$(fp '/repo/src/keyboard.ts')"       # '.key' substring must not match
 t PFC4 0 protect-files.sh "$(fp '/repo/src/environment.ts')"    # 'env' substring must not match
+
+echo "== block-destructive: v5 quoted / braced / fully-quoted rm spellings =="
+t BD60 2 block-destructive.sh "$(cmd '"/bin/rm" -rf /')"
+t BD61 2 block-destructive.sh "$(cmd "'/bin/rm' -rf /")"
+# shellcheck disable=SC2016  # deliberate: payloads must carry a LITERAL ${HOME}
+t BD62 2 block-destructive.sh "$(cmd 'rm -rf ${HOME}')"
+# shellcheck disable=SC2016
+t BD63 2 block-destructive.sh "$(cmd 'rm -rf "${HOME}"')"
+t BD64 2 block-destructive.sh "$(cmd "'rm' -rf /")"
+echo "== block-destructive: quoted rm PROSE stays allowed (safe controls) =="
+t BD65 0 block-destructive.sh "$(cmd "echo 'rm -rf /'")"
+t BD66 0 block-destructive.sh "$(cmd 'echo "rm -rf /"')"
+echo "== block-destructive: quoted force-refspec =="
+t BD67 2 block-destructive.sh "$(cmd 'git push origin "+main"')"
+t BD68 2 block-destructive.sh "$(cmd "git push origin '+main'")"
+echo "== block-destructive: semicolon-less unguarded DELETE at end-of-command =="
+t BD70 2 block-destructive.sh "$(cmd 'DELETE FROM users')"
+t BD71 2 block-destructive.sh "$(cmd 'DELETE FROM dbo.Users')"
+t BD72 2 block-destructive.sh "$(cmd 'DELETE FROM [dbo].[Users]')"
+t BD73 0 block-destructive.sh "$(cmd 'DELETE FROM users WHERE id = 1')"     # WHERE-guarded
+t BD74 0 block-destructive.sh "$(cmd 'echo "DELETE FROM users"')"           # docs text
+t BD75 0 block-destructive.sh "$(cmd 'git commit -m "document DELETE FROM users"')"  # docs text
+echo "== block-destructive: option-first installs ASK; option-only restores stay allowed =="
+t_ask ASK18 block-destructive.sh "$(cmd 'npm install --save-dev lodash')"
+t_ask ASK19 block-destructive.sh "$(cmd 'npm i -D lodash')"
+t_ask ASK20 block-destructive.sh "$(cmd 'npm install -g typescript')"
+t_ask ASK21 block-destructive.sh "$(cmd 'pip install --user requests')"
+t_noask AL12 block-destructive.sh "$(cmd 'npm install --legacy-peer-deps')"
+
+echo "== block-destructive: git commit on a protected branch ASKs (CLAUDE.md §2) =="
+PBMAIN="$SCRATCH/pb-main"; mkdir -p "$PBMAIN"
+( cd "$PBMAIN" && git init -q -b main . && printf 'x\n' > f.txt && git add f.txt \
+  && git -c user.email=t@t -c user.name=t commit -qm init )
+PBFEAT="$SCRATCH/pb-feat"; mkdir -p "$PBFEAT"
+( cd "$PBFEAT" && git init -q -b feat/x . && printf 'x\n' > f.txt && git add f.txt \
+  && git -c user.email=t@t -c user.name=t commit -qm init )
+t_ask  PBC1 block-destructive.sh "$(cmd 'git commit -am wip')" "CLAUDE_PROJECT_DIR=$PBMAIN"
+t_noask PBC2 block-destructive.sh "$(cmd 'git commit -am wip')" "CLAUDE_PROJECT_DIR=$PBFEAT"
+t_noask PBC3 block-destructive.sh "$(cmd 'git commit -am wip')" "CLAUDE_PROJECT_DIR=$SCRATCH"
+# deny still beats the branch ask when both would apply
+t PBC4 2 block-destructive.sh "$(cmd 'git commit -am wip && git push --force')" "CLAUDE_PROJECT_DIR=$PBMAIN"
+
+echo "== protect-files: v5 case-folded sensitive basenames (same file on Windows/macOS) =="
+t PFF1 2 protect-files.sh "$(fp '/repo/ID_RSA')"
+t PFF2 2 protect-files.sh "$(fp '/repo/Id_Rsa')"
+t PFF3 2 protect-files.sh "$(fp '/repo/Secrets.yaml')"
+t PFF4 2 protect-files.sh "$(fp '/repo/Credentials.json')"
+t_ask PFF5 protect-files.sh "$(fp '/repo/.NPMRC')"
+t_ask PFF6 protect-files.sh "$(fp '/repo/.PYPIRC')"
+t_ask PFF7 protect-files.sh "$(fp '/repo/.NETRC')"
+t PFF8 0 protect-files.sh "$(fp '/repo/src/KeyBoard.ts')"   # mixed-case substring still no match
+
+echo "== protect-files: BOTH settings layers ask (local allow rules skip workspace trust) =="
+t_ask PFS1 protect-files.sh "$(fp '/repo/.claude/settings.local.json')"
+t_ask PFS2 protect-files.sh '{"tool_name":"Edit","tool_input":{"file_path":"/repo/.claude/settings.local.json"}}'
+t_ask PFS3 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/.claude/settings.local.json"}}'
+t_ask PFS4 protect-files.sh "$(fp '/repo/.claude/settings.json')"
+
+echo "== protect-files: whole .github/actions/ subtree asks (scripts run with CI trust) =="
+t_ask PFI5 protect-files.sh "$(fp '/repo/.github/actions/example/script.sh')"
+t_ask PFI6 protect-files.sh "$(fp '/repo/.github/actions/example/index.js')"
+t PFI7 0 protect-files.sh "$(fp '/repo/.github/ISSUE_TEMPLATE.md')"   # docs outside actions/ stay editable
+
+echo "== claude-init: single masked copy failures (v5 P1 regression) =="
+# PATH-stub cp fails on exactly ONE source basename; everything later would
+# succeed. Pre-fix, CLAUDE.md/.gitignore/.gitattributes copy failures were
+# masked (set -e is inert inside `if ! ( ... )`) and an incomplete project
+# published with a success message.
+STUBCP="$SCRATCH/stubcp"; mkdir -p "$STUBCP"
+REAL_CP="$(command -v cp)"
+cat > "$STUBCP/cp" <<STUB
+#!/usr/bin/env bash
+if [[ -n "\${FAIL_CP_BASE:-}" ]]; then
+  for a in "\$@"; do
+    if [[ "\$(basename "\$a")" == "\$FAIL_CP_BASE" ]]; then
+      echo "stub-cp: injected failure on \$a" >&2
+      exit 1
+    fi
+  done
+fi
+exec "$REAL_CP" "\$@"
+STUB
+chmod +x "$STUBCP/cp"
+bootfail() { # bootfail <id> <basename-to-fail>
+  local id="$1" failbase="$2"
+  local root="$SCRATCH/bf-$id"
+  mkdir -p "$root"
+  ( set +e
+    cd "$SCRATCH" || exit 9
+    before="$(pwd)"
+    # shellcheck disable=SC1090,SC1091  # sourced path is a runtime variable
+    source "$REPO/claude-init.sh"
+    PATH="$STUBCP:$PATH" FAIL_CP_BASE="$failbase" \
+      CLAUDE_TEMPLATE_DIR="$REPO" CLAUDE_PROJECTS_DIR="$root" \
+      claude-init proj > "$SCRATCH/bf-$id.out" 2>&1
+    rc=$?
+    printf 'rc=%s samecwd=%s\n' "$rc" "$([[ "$(pwd)" == "$before" ]] && echo yes || echo no)" > "$SCRATCH/bf-$id.txt"
+  )
+  local leftover
+  leftover="$(find "$root" -maxdepth 1 -name '.claude-init*' -print -quit 2>/dev/null)"
+  if grep -q 'rc=1' "$SCRATCH/bf-$id.txt" && grep -q 'samecwd=yes' "$SCRATCH/bf-$id.txt" \
+     && [[ ! -e "$root/proj" && -z "$leftover" ]] \
+     && ! grep -q 'bootstrapped at' "$SCRATCH/bf-$id.out"; then
+    PASS=$((PASS+1)); echo "PASS $id failed '$failbase' copy -> exit 1, no dest, no temp, no success msg, cwd kept"
+  else
+    FAIL=$((FAIL+1)); echo "FAIL $id $(tr '\n' ' ' < "$SCRATCH/bf-$id.txt") dest=$([[ -e "$root/proj" ]] && echo LEFT || echo none) temp=${leftover:-none} msg=$(grep -c 'bootstrapped at' "$SCRATCH/bf-$id.out")"
+  fi
+}
+bootfail BOOT10 "CLAUDE.md"
+bootfail BOOT11 ".claude"
+bootfail BOOT12 ".gitignore"
+bootfail BOOT13 ".gitattributes"
+
+echo "== gitignore: every hook-allowlisted env template is committable =="
+GI="$SCRATCH/gi"; mkdir -p "$GI"
+( cd "$GI" && git init -q . && "$REAL_CP" "$REPO/.gitignore" . \
+  && for f in .env.example .env.sample .env.template .env.dist .env.test.example; do printf 'X=1\n' > "$f"; done \
+  && printf 'SECRET=a\n' > .env && printf 'SECRET=b\n' > .env.local \
+  && git add -A 2>/dev/null )
+gi_ok=1
+for f in .env.example .env.sample .env.template .env.dist .env.test.example; do
+  git -C "$GI" ls-files --cached | grep -qxF "$f" || gi_ok=0
+done
+git -C "$GI" ls-files --cached | grep -qxF ".env" && gi_ok=0
+git -C "$GI" ls-files --cached | grep -qxF ".env.local" && gi_ok=0
+if [[ "$gi_ok" == 1 ]]; then PASS=$((PASS+1)); echo "PASS GI1    5 templates stage; .env/.env.local stay ignored"; else FAIL=$((FAIL+1)); echo "FAIL GI1    template/gitignore policy disagreement: $(git -C "$GI" ls-files --cached | tr '\n' ' ')"; fi
 
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"

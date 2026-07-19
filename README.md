@@ -5,6 +5,13 @@ engineering policy (`CLAUDE.md`), **37 domain skills** that load on demand,
 and **5 enforcement hooks** that block destructive actions before they run —
 plus the regression tests that keep the enforcement honest.
 
+> **Guardrails, not a sandbox.** The hooks deterministically block the
+> *literal* dangerous patterns they match. They do not stop semantic
+> equivalents (`python -c "shutil.rmtree(...)"`), prompt injection, or a
+> determined local actor — they run with your user's privileges. Details:
+> [hook limitations](.claude/hooks/README.md) and the threat-model notes in
+> [HOW-TO.md](HOW-TO.md).
+
 ## What you get
 
 | Piece | Where | What it does |
@@ -12,7 +19,7 @@ plus the regression tests that keep the enforcement honest.
 | Engineering policy | [CLAUDE.md](CLAUDE.md) | Priorities, AI action boundaries, security, testing, git discipline (§0–§20) |
 | Skill library | [.claude/skills/](.claude/skills/INDEX.md) | 37 single-responsibility skills — cleanup, data engineering (SQL Server/SSIS/Airflow), Python/backend, AI/LLM, CI, frontend. Full catalog + dependency graph in [INDEX.md](.claude/skills/INDEX.md) |
 | Enforcement hooks | [.claude/hooks/](.claude/hooks/README.md) | Block destructive commands, protect sensitive files, scan secrets, warn on oversized diffs, remind on Definition of Done. Dependency installs prompt for approval instead of hard-failing |
-| Tests | [tests/](tests/) | 107-case hook regression suite + skill-catalog consistency checks + executable live skill-routing evaluation (fixtures, seed repos, runner, committed results) |
+| Tests | [tests/](tests/) | table-driven hook regression suite (the runner's final `RESULT:` line is the authoritative case count — run `bash tests/hooks/run-tests.sh`) + skill-catalog consistency + offline routing scoring/parser/consistency tests + executable live skill-routing evaluation (fixtures, seed repos, runner, committed results) |
 | Enforcement design | [.claude/ENFORCEMENT.md](.claude/ENFORCEMENT.md) | The 5-layer defense model: prompts suggest, hooks enforce |
 
 ## Quick start

@@ -4,6 +4,95 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ## [Unreleased]
 
+### Fixed (fifth cycle)
+- **claude-init (P1)**: a failed copy of `CLAUDE.md`, `.gitignore`, or
+  `.gitattributes` was MASKED — the subshell is the operand of `if !`, a
+  context where bash ignores `set -e` (even one issued inside it), so the
+  installer's exit 0 published an incomplete project with a success message.
+  Steps are now `&&`-chained (short-circuits in any context) and the staged
+  tree is validated for every required artifact before the atomic rename;
+  four one-failure-at-a-time PATH-stub regressions (BOOT10–13). The header
+  now also states the interrupt limitation honestly (a killed process can
+  leave a `.claude-init.*` temp dir; no trap — the function is sourced).
+- **verify-done**: `run_check` executes argument vectors directly — `eval`
+  removed (CLAUDE.md §7 consistency); VD6–VD10 semantics unchanged.
+- **.gitignore**: re-include all five supported env templates
+  (`.env.sample`, `.env.template`, `.env.dist`, `.env.test.example` joined
+  `.env.example`) so the file hook's "committed env templates" allowlist and
+  Git tracking policy agree; generated projects inherit the fix.
+
+### Security (fifth cycle)
+- **block-destructive**: closed measured v5 bypasses — quoted `rm` command
+  words (`"/bin/rm" -rf /`, `'rm' -rf /`), brace-expanded `${HOME}` targets,
+  quoted force-refspecs (`git push origin "+main"`), option-first installs
+  (`npm install --save-dev/-D/-g`, `pip install --user`), and semicolon-less
+  unguarded `DELETE FROM …` ending the command. Safe controls measured
+  unchanged: quoted prose (`echo 'rm -rf /'`, `echo "DELETE FROM users"`,
+  commit messages), `rm -rf build/`, WHERE-guarded DELETE, and every
+  lockfile/manifest restore stay allowed.
+- **block-destructive**: `git commit` while on `main`/`master`/`production`/
+  `release/*` now emits the CLAUDE.md §2 approval ask (plain feature-branch
+  commits and `git push` keep their existing flows).
+- **protect-files**: ALL sensitive-basename comparisons are case-folded
+  (`ID_RSA`, `Secrets.yaml`, `Credentials.json`, `.NPMRC`, … gate exactly
+  like their lowercase forms — same file on Windows/macOS); the whole
+  `.github/actions/` subtree now asks (composite-action scripts run with
+  workflow trust, not just `action.yml`); `.claude/settings.local.json` asks
+  like `settings.json` (per the settings docs, local allow rules skip
+  workspace trust and `disableAllHooks` is accepted there); generic `*.pem`
+  moved deny→ask (public cert chains; private-key content stays hard-blocked
+  by scan-secrets, key containers `*.key`/`*.p12`/`*.pfx`/… stay deny).
+
+### Added (fifth cycle)
+- Stream-JSON extraction hardened and testable: pure `parse_stream()` +
+  `stream_anomaly()` in `run_eval.py` — malformed lines and a missing
+  terminal `result` event now mark the run ERRORED (visible, excluded from
+  metrics) instead of silently scoring as a valid no-load; new
+  `--fail-on-error` gate; 9 offline parser fixtures.
+- `tests/skills/routing/test_results_consistency.py`: every committed
+  summary must recompute exactly from its JSONL, every `evaluated_runs`
+  entry must match the summary it cites, and the newest full-fixture run
+  must be recorded.
+- `tests/check_links.py`: repo-wide relative Markdown link check over
+  tracked files (code fences stripped).
+- CI now runs the offline routing tests, results consistency, `py_compile`,
+  workflow+fixture YAML validation, generated-file cleanliness, and the
+  link check (live model routing stays local-only).
+- Hook regression suite 143 → 187: quoted/braced/option-first/semicolon-less
+  command variants with prose safe-controls, protected-branch commit ask,
+  case-folded basenames, both settings layers × Edit/Write/NotebookEdit,
+  `.github/actions/` subtree, PEM ask tier, bootstrap masked-copy failures,
+  gitignore/template agreement.
+- `evaluated_runs` records the final authoritative 20×3 run
+  (`routing-20260718-195349`: recall 0.963, precision 1.0, conflict 0.0);
+  older entries annotated where their hand-entered `cc_version` is not
+  backed by the summary file.
+- Fifth-cycle audit + adjudication reports; repository-level secret-scanner
+  proposal for owner sign-off (`reports/proposal-secret-scanner.md` — not
+  installed, owner decision).
+
+### Changed (fifth cycle)
+- README: guardrail-not-sandbox warning near the intro; brittle hook-count
+  replaced with the runner-authoritative phrasing.
+- hooks README synced with implementation: secret values are withheld
+  everywhere (not "stderr only"), DELETE end-of-command coverage + the
+  quote-boundary residual documented, new ask tiers listed.
+
+### Fixed (fourth cycle — recorded retroactively; details in reports/*-v4.md)
+- Stop-hook verification now works in linked git worktrees (`.git` is a
+  file there); untracked code in new directories is counted.
+- scan-secrets never prints matched-secret material (no prefix/preview);
+  audit-log fields escape control characters (no forged records).
+- Destructive-command matching hardened: `/bin/rm`, `\rm`, `rm -rf -- /`,
+  schema-qualified/bracketed SQL, `DROP VIEW/PROC/INDEX`, force-push via
+  `+refspec`; key/cert/credential files, `action.yml`, `.gitmodules`,
+  `*.tf` gated; `.env` case variants denied.
+- claude-init excludes machine-local `.claude` state from generated
+  projects; routing harness gained duplicate-id rejection, result-file
+  collision guards, `--min-recall`/`--max-conflict`/`--fail-on-miss` gates,
+  auto-captured `cc_version`, and scoring-math unit tests; CI runs on a
+  pinned image with checksum-verified ShellCheck.
+
 ### Security (third cycle)
 - **block-destructive**: closed measured false negatives — `rm` now denies every
   recursive flag spelling (`-fr`, split `-r -f`, `--recursive --force`, capital

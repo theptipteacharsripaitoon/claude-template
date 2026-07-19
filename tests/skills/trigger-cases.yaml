@@ -113,6 +113,7 @@ airflow_authoring_vs_review:
 evaluated_runs:
   - date: 2026-07-18
     cc_version: 2.1.214
+    cc_version_note: "hand-entered from the session CLI; this run's summary file records null (stream auto-capture landed with the 195349 run)"
     model: claude-sonnet-5
     runs_per_case: 3
     cases: 19
@@ -122,6 +123,7 @@ evaluated_runs:
     note: "single conflict source: layout-root-mess -> repository-cleanup 3/3 (description overlap)"
   - date: 2026-07-18
     cc_version: 2.1.214
+    cc_version_note: "hand-entered from the session CLI; this run's summary file records null (stream auto-capture landed with the 195349 run)"
     model: claude-sonnet-5
     runs_per_case: 3
     cases: 1
@@ -131,6 +133,7 @@ evaluated_runs:
     note: "after repository-cleanup description disambiguation: project-layout 3/3"
   - date: 2026-07-18
     cc_version: 2.1.214
+    cc_version_note: "hand-entered from the session CLI; this run's summary file records null (stream auto-capture landed with the 195349 run)"
     model: claude-sonnet-5
     runs_per_case: 3
     cases: 1
@@ -138,3 +141,12 @@ evaluated_runs:
     results_file: results/routing-20260718-1656.jsonl
     metrics: {recall: 1.0, precision: 1.0, conflict_rate: 0.0, no_load_rate: 0.0, stability: 1.0}
     note: "edited description still fires 3/3 on its own prompt"
+  - date: 2026-07-18
+    cc_version: 2.1.214
+    model: claude-sonnet-5
+    runs_per_case: 3
+    cases: 20
+    kind: full-fixture verification (final authoritative run, v4 cycle)
+    results_file: results/routing-20260718-195349.jsonl
+    metrics: {recall: 0.963, precision: 1.0, conflict_rate: 0.0, no_load_rate: 0.037, stability: 0.9}
+    note: "60 runs, 0 errored; only misses are two isolated no-loads (review-api-breaking run2, dag-add-retry run2 — nothing loaded, never a mis-load)"
