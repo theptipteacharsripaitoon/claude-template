@@ -63,13 +63,15 @@ fi
 # common conventions; missing commands are skipped silently.
 
 run_check() {
+  # Executes the remaining args DIRECTLY as an argument vector — never eval
+  # (CLAUDE.md §7: no eval, even on internally-built strings; word-splitting
+  # surprises are a maintenance hazard the vector form cannot have).
   local name="$1"; shift
-  local cmd="$*"
-  if eval "$cmd" >/dev/null 2>&1; then
+  if "$@" >/dev/null 2>&1; then
     echo "   ✓ $name" >&2
     return 0
   else
-    echo "   ✗ $name FAILED — run '$cmd' to see details" >&2
+    echo "   ✗ $name FAILED — run '$*' to see details" >&2
     return 1
   fi
 }
@@ -101,41 +103,41 @@ if [[ -f package.json ]]; then
     echo "   ⚠ package.json present but '$PM' is not installed — Node checks skipped" >&2
   else
     if jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "typecheck" "$PM run typecheck" || FAILED=$((FAILED+1))
+      RAN=$((RAN+1)); run_check "typecheck" "$PM" run typecheck || FAILED=$((FAILED+1))
     fi
     if jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "lint" "$PM run lint" || FAILED=$((FAILED+1))
+      RAN=$((RAN+1)); run_check "lint" "$PM" run lint || FAILED=$((FAILED+1))
     fi
     if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "test" "$PM test" || FAILED=$((FAILED+1))
+      RAN=$((RAN+1)); run_check "test" "$PM" test || FAILED=$((FAILED+1))
     fi
   fi
 fi
 if [[ -f pyproject.toml ]]; then
   if command -v ruff >/dev/null; then
-    RAN=$((RAN+1)); run_check "ruff" "ruff check ." || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "ruff" ruff check . || FAILED=$((FAILED+1))
   fi
   if command -v mypy >/dev/null; then
-    RAN=$((RAN+1)); run_check "mypy" "mypy ." || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "mypy" mypy . || FAILED=$((FAILED+1))
   fi
   if command -v pytest >/dev/null; then
-    RAN=$((RAN+1)); run_check "pytest" "pytest -q" || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "pytest" pytest -q || FAILED=$((FAILED+1))
   fi
 fi
 if [[ -f Cargo.toml ]]; then
   if ! command -v cargo >/dev/null 2>&1; then
     echo "   ⚠ Cargo.toml present but 'cargo' is not installed — Rust checks skipped" >&2
   else
-    RAN=$((RAN+1)); run_check "cargo check" "cargo check" || FAILED=$((FAILED+1))
-    RAN=$((RAN+1)); run_check "cargo test" "cargo test --quiet" || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "cargo check" cargo check || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "cargo test" cargo test --quiet || FAILED=$((FAILED+1))
   fi
 fi
 if [[ -f go.mod ]]; then
   if ! command -v go >/dev/null 2>&1; then
     echo "   ⚠ go.mod present but 'go' is not installed — Go checks skipped" >&2
   else
-    RAN=$((RAN+1)); run_check "go vet" "go vet ./..." || FAILED=$((FAILED+1))
-    RAN=$((RAN+1)); run_check "go test" "go test ./..." || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "go vet" go vet ./... || FAILED=$((FAILED+1))
+    RAN=$((RAN+1)); run_check "go test" go test ./... || FAILED=$((FAILED+1))
   fi
 fi
 
