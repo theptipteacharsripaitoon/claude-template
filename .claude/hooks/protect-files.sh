@@ -31,16 +31,20 @@ fi
 # Normalize: backslashes -> forward slashes; wrap in slashes so directory
 # components can be matched as exact, slash-bounded segments (`/infra/` will
 # not match `infrastructure`).
-# Case-normalization strategy (one rule, applied everywhere): every BASENAME
-# comparison in this hook — allowlist, deny names, ask names, extensions — is
+# Case-normalization strategy (one rule, applied everywhere): EVERY comparison
+# in this hook — basenames, extensions, AND directory segments — is
 # case-folded, because on this repo's primary platforms (Windows/macOS) case
-# variants address the SAME file, so `ID_RSA` must gate exactly like `id_rsa`.
-# Directory-segment matching stays case-sensitive (folders are conventions,
-# not secrets). User-facing reasons always print $FILE in its original casing.
+# variants address the SAME file: `.GIT/config` reaches the real `.git/config`
+# exactly as `ID_RSA` reaches `id_rsa` (v6; segments were case-sensitive
+# before, a deny/ask bypass on case-insensitive filesystems). On case-sensitive
+# Linux a genuinely distinct `.GIT/` directory now errs toward ask/deny —
+# over-cautious, never a dangerous allow, per the limitation note above.
+# User-facing reasons always print $FILE in its original casing.
 FILE_N="${FILE//\\//}"
+FILE_LC="${FILE_N,,}"
 BASE="${FILE_N##*/}"
 BASE_LC="${BASE,,}"
-SEG="/${FILE_N#/}/"
+SEG_LC="/${FILE_LC#/}/"
 
 # --- Allowlist: committed env templates are editable documentation ------------
 ALLOWLIST_BASE=(
@@ -58,7 +62,8 @@ done
 
 # --- Helpers ------------------------------------------------------------------
 # True if the path contains an exact directory segment (or adjacent segments).
-has_segment() { [[ "$SEG" == *"/$1/"* ]]; }
+# Both sides case-folded (see strategy note above).
+has_segment() { [[ "$SEG_LC" == *"/${1,,}/"* ]]; }
 # True if the basename equals one of the given names (case-folded; the names
 # passed in are written lowercase except proper-noun files, which are folded).
 base_is() {
@@ -143,7 +148,7 @@ base_is "CODEOWNERS" ".gitattributes" && ASK=true
 # project settings, its permission `allow` rules take effect without the
 # workspace-trust step, and it accepts `disableAllHooks` — i.e. an ungated
 # write here is a path to weaken hooks/permissions without approval.
-[[ "$FILE_N" == *".claude/settings.json" || "$FILE_N" == *".claude/settings.local.json" ]] && ASK=true
+[[ "$FILE_LC" == *".claude/settings.json" || "$FILE_LC" == *".claude/settings.local.json" ]] && ASK=true
 has_segment ".claude" && has_segment "hooks" && ASK=true
 
 if [[ "$ASK" == "true" ]]; then
