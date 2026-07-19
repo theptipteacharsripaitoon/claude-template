@@ -224,3 +224,24 @@ the future instead.
 
 Implementation follows this commit; every Confirmed item above lands with its
 regression in the same cycle, validated by the full Phase-5 matrix.
+
+---
+
+## Implementation status (appended post-Phase-5; adjudication above unchanged)
+
+Every **Confirmed** finding landed with its regression in this cycle:
+#1 → `d6b6949` + BOOT10–13; #2/#4/#11/#12 → `237632f` + PFS/PFF/PFI/PFK
+cases; #3/#14 → `f2a2d87` + BD60–75/ASK18–21/AL12/PBC1–4; #18 → `4de50fa`
+(VD6–VD10 unchanged); #10 → `f87b5c7` + GI1; #6/#8 → `df2e181` (parser
+fixtures, `--fail-on-error`, consistency test, `evaluated_runs` completed);
+#7 → `9540d4a`; #9/#21 → `24cb1ba`; #13 → proposal committed, **nothing
+installed** (owner). Suite 143 → **187/187**; 74-row command/path matrix
+re-run: **0 deviations**, all safe controls unchanged. #5 is honored by
+construction: the head's own CI run id and verdict are recorded in the PR
+description, and no green claim precedes that exact run.
+
+**Not changed, as adjudicated:** #15 (no live rerun — descriptions and
+invocation untouched), #16 (manual-only rejected on routing evidence),
+#17 (no context trim without evidence), #19/#20 (owner: LICENSE, release
+policy). Post-fix weighted score: **8.9** (rescore table in
+`claude-independent-audit-v5.md`).

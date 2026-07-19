@@ -493,3 +493,78 @@ regression-covered by VD6–VD10 — worth doing while touching the file (P3).
     the owner's.
 13. Owner items unchanged: LICENSE, release tag/versioning, CONTRIBUTING/
     SECURITY, template-repo flag.
+
+---
+
+## Post-implementation validation (appended after Phases 3–5; Phase 1 above is unchanged)
+
+Implementation commits on `claude/template-audit-v5-2b6bd3` (each fix landed
+with its regression in the same cycle):
+
+| Commit | Change |
+|---|---|
+| `d6b6949` | fix(bootstrap): `&&`-chained copies + staged-tree validation before rename (V5-1) |
+| `237632f` | fix(hooks): case-folded basenames; settings.local.json / `.github/actions/` ask; `*.pem` deny→ask (V5-2/3/7, adjudication #12) |
+| `f2a2d87` | fix(hooks): quoted/braced/option-first/semicolon-less variants; protected-branch commit ask (V5-4/5/6, adjudication #14) |
+| `4de50fa` | refactor(hooks): verify-done `eval` → argument vectors (V5-13) |
+| `f87b5c7` | chore: `.gitignore` re-includes all five supported env templates (V5-8) |
+| `dd73465` | test(hooks): +44 regressions — suite 143 → **187** |
+| `df2e181` | test(routing): pure `parse_stream`/`stream_anomaly`, 9 parser fixtures, `--fail-on-error`, results-consistency test, `evaluated_runs` completed (V5-9/10) |
+| `934400c` | test: repo-wide Markdown link check |
+| `9540d4a` | ci: offline routing/consistency/compile/YAML/cleanliness/link steps (V5-10d) |
+| `24cb1ba` | docs: README warning + non-brittle count; hooks README behavior sync; CHANGELOG cycles 4+5; scanner proposal (V5-11, adjudication #13) |
+
+### Full validation battery (final tree, all observed this session)
+
+| Check | Result |
+|---|---|
+| Hook suite (`bash tests/hooks/run-tests.sh`) | exit 0 — `RESULT: pass=187 fail=0` |
+| Installer (`bash .claude/hooks/install.sh`) | exit 0 |
+| Bootstrap failure harness (11-case, PATH-stub) | 8/8 assertable cases PASS; case 08 (kill -TERM) = documented temp-dir limitation, now stated in the header |
+| ShellCheck v0.10.0 (pinned, `-x -P .claude/hooks`, all 10 scripts) | exit 0 |
+| Catalog checker | 37 skills, ALL CHECKS PASS |
+| Routing scoring + stream-parser fixtures | 15/15 passed |
+| Results/fixture consistency | ALL CHECKS PASS (4 result sets, 4 `evaluated_runs` entries, 20 fixture cases) |
+| `py_compile` (5 files) / settings JSON / workflow+fixture YAML | all OK |
+| Generated-file tracking | no tracked `*.pyc` / `__pycache__` |
+| Markdown link check | 59 tracked files, ALL CHECKS PASS |
+| Command/path policy matrix (74 rows, §7–§11 re-run) | **0 deviations** — every dangerous variant deny/ask, every safe control (prose, restores, WHERE-guarded, `rm -rf build/`, templates) still allowed |
+| Live routing | **not re-run, by rule**: no skill description or invocation behavior changed this cycle; committed 195349 metrics remain authoritative |
+
+### Re-score (same fixed rubric)
+
+| Category | Weight | Pre | Post | Basis for change |
+|---|---|---|---|---|
+| Technical correctness | 15% | 7.0 | 9.2 | P1 fixed + 4 stub regressions; all validators green |
+| Skill trigger quality | 15% | 8.6 | 8.6 | unchanged (no description edits); still 20/37 coverage |
+| Hook correctness | 15% | 7.8 | 9.2 | 74-row matrix 0 deviations; residuals documented (quote-wrapped `;`-less SQL, semantic equivalents) |
+| Conflict avoidance | 10% | 9.0 | 9.0 | unchanged (measured 0.000) |
+| Safety & permissions | 10% | 7.5 | 9.0 | both settings layers gated; case-fold; actions subtree; protected-branch ask; PEM tier rationalized |
+| Testing & evaluation | 15% | 8.3 | 9.2 | 187-case suite; parser fixtures; consistency gate; all offline checks in CI |
+| Context efficiency | 5% | 8.5 | 8.5 | unchanged (measured, justified) |
+| Team usability | 5% | 8.4 | 8.8 | docs synced; warning added; non-brittle count |
+| Maintainability | 5% | 8.8 | 9.0 | eval removed; pure testable parser; consistency invariants |
+| Public-template readiness | 5% | 6.0 | 6.5 | CHANGELOG complete, proposal ready — LICENSE/release still owner-gated |
+
+**Weighted: 8.9 / 10** (up from 8.3). The 9.0-gate correctness conditions are
+all met (no open P0/P1, bootstrap safe, settings gated, variants covered,
+controls pass, parser tested, docs match); the weighted number stays below
+9.0 because skill-routing coverage (20/37) and public-template readiness
+(LICENSE, release policy — owner decisions) are unchanged by instruction.
+9.5 is out of reach for the same reasons (not all categories ≥9, no
+37-skill coverage, licensing/release incomplete). No change was made whose
+only purpose was score movement.
+
+### Final evidence chain
+
+- Audited base: `21cc3d5` (CI run `29675660200`, success, recorded in §1).
+- A committed report cannot contain its own commit's SHA or CI run id, so:
+  the branch head is the commit that adds this section; its exact SHA, its
+  CI run id, and the green/failed verdict for that exact SHA are recorded in
+  the pull-request description and were verified **before** any "final
+  commit is green" claim was made anywhere.
+- Remaining limitations (unchanged by instruction): no LICENSE / release
+  policy (owner), routing coverage 20/37 skills (live-model budget, owner),
+  repository-level secret scanner not installed (owner;
+  `reports/proposal-secret-scanner.md`), quote-wrapped semicolon-less SQL
+  and semantic equivalents outside regex reach (documented tiers).
