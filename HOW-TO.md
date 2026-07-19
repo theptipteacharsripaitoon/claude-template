@@ -244,8 +244,44 @@ Should show: `claude-init is a function`.
 From any directory:
 
 ```bash
-claude-init my-new-app
+claude-init my-new-app                       # standard profile
+claude-init --dry-run my-new-app             # show the plan; writes nothing
+claude-init --profile strict my-new-app      # pick a profile
 ```
+
+### Profiles
+
+Every profile except `standard` changes the **generated project only** — the
+template source is never modified. A profile that reduces safety says so in
+its own output; nothing is weakened silently.
+
+| Profile | Hooks | Stop hook | Skills | For |
+|---|---|---|---|---|
+| `minimal` | block-destructive + protect-files only — **prints a SAFETY REDUCED warning** (no secret scan, no diff guard) | off | all 37 | scratch work you fully supervise |
+| `standard` *(default)* | all five | reminder | all 37 | normal development |
+| `strict` | all five | **blocking** (`CLAUDE_VERIFY_BLOCK=1`) | all 37 | pre-merge / CI-adjacent work |
+| `team` | all five | reminder | all 37; `repository-cleanup` and `release-readiness` become **manual-only** (`/repository-cleanup`, `/release-readiness`) | shared repos where whole-repo workflows should be deliberate |
+| `security-sensitive` | all five, diff hard-block tightened to 500 lines | blocking | all 37 | regulated / auditable work |
+
+`--dry-run` prints the template commit, destination, profile, exact copy
+list, excluded machine-local state, and expected git changes — and creates
+nothing (not even the destination root).
+
+### Updates: version stamp + drift status
+
+Each generated project carries `.claude/.template-version` (template commit,
+profile, timestamp) and `.claude/.template-manifest` (sha256 of every
+template-owned file at generation time). From inside a project:
+
+```bash
+claude-template-status
+```
+
+reports every managed file as unchanged / **LOCALLY MODIFIED** / MISSING and
+never writes anything. There is deliberately **no auto-update**: update by
+generating a fresh project from the newer template and diffing, or by copying
+individual files after review — your local customizations are never silently
+overwritten.
 
 Output:
 ```
