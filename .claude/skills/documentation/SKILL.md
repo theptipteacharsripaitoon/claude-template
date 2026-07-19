@@ -1,6 +1,12 @@
 ---
 name: documentation
-description: Use when proposing or writing repository documentation — README, .env.example, CONTRIBUTING — or assembling the final report of a cleanup/restructuring. Trigger on phrases like "write the README", "document the setup", "create .env.example", "contributing guide", "final cleanup report", "handover documentation". Covers doc structure standards and the cleanup final-report format. Do NOT use for code comments/docstrings, API reference docs (see api-design), or architecture docs.
+description: >-
+  Use when proposing or writing repository documentation — README,
+  .env.example, CONTRIBUTING — or the final report of a cleanup. Trigger:
+  "write the README", "document the setup", "create .env.example". Do NOT use
+  for code comments/docstrings style (CLAUDE.md §6) or API reference
+  generation (api-design owns contracts).
+
 ---
 
 # Repository Documentation

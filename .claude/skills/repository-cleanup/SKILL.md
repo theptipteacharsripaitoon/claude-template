@@ -1,6 +1,14 @@
 ---
 name: repository-cleanup
-description: Use when auditing, cleaning up, or professionalizing an existing repository — finding unused files, removing generated artifacts, preparing a repo for team handover. Trigger on phrases like "clean up this repo", "find unused files", "repository audit", "declutter", "professionalize the repo", "prepare for handover". Orchestrates the full audit → approval → execute → verify workflow — invoke deliberately for whole-repo efforts, not for tidying a single folder. Do NOT use for structure-only requests ("organize the project", "the root is a mess" — project-layout owns folder-structure proposals), architecture refactoring, rewriting business logic, modernizing code, or performance work — behavior preservation is mandatory.
+description: >-
+  Use when auditing or professionalizing an existing repository — unused
+  files, generated artifacts, team-handover preparation. Orchestrates audit →
+  approval → execute → verify; invoke deliberately for whole-repo efforts.
+  Trigger: "clean up this repo", "repository audit", "prepare for handover".
+  Do NOT use for structure-only requests ("organize the project" —
+  project-layout), architecture refactoring, rewriting logic, or performance
+  work — behavior preservation is mandatory.
+
 ---
 
 # Repository Cleanup & Professionalization

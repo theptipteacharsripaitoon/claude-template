@@ -1,6 +1,13 @@
 ---
 name: project-layout
-description: Use when reviewing or proposing repository folder structure — where files should live, what belongs in the root, layout for a library/application/service/monorepo, or planning a structure migration. Trigger on phrases like "restructure the project", "where should this file go", "propose a folder structure", "the root is cluttered", "standard layout", "organize these folders". Covers the minimal-root rule, project-type-aware layouts, naming review, and migration strategy. Do NOT use for executing moves (git-hygiene owns mechanics) or for changing module boundaries/architecture.
+description: >-
+  Use when reviewing or proposing repository folder structure — where files
+  live, root contents, library/application/monorepo layout, structure
+  migration planning. Trigger: "restructure the project", "where should this
+  file go", "the root is cluttered", "propose a folder structure". Do NOT use
+  for executing moves (git-hygiene owns mechanics) or module
+  boundaries/architecture.
+
 ---
 
 # Project Layout

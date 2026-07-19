@@ -1,6 +1,12 @@
 ---
 name: ui-review
-description: Use when reviewing UI changes before merge — visual evidence, interaction states, responsiveness, accessibility, text rendering. Trigger on phrases like "review the UI change", "does this screen look right", "check the new page", "accessibility check", "Thai text overflows". Covers the state matrix, visual-evidence requirements, and a11y basics. Do NOT use for code structure (frontend-layout), visual-regression tooling (testing), or design-token governance (design-system).
+description: >-
+  Use when reviewing UI changes before merge — visual evidence, interaction
+  states, responsiveness, accessibility, text rendering. Trigger: "review the
+  UI change", "does this screen look right", "accessibility check". Do NOT use
+  for shared component/token governance (design-system) or frontend folder
+  structure (frontend-layout).
+
 ---
 
 # UI Review

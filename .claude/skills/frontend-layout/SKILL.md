@@ -1,6 +1,13 @@
 ---
 name: frontend-layout
-description: Use when structuring frontend code — components, hooks, store, utils placement, colocation, feature folders, barrel files. Trigger on phrases like "organize the frontend", "where should this component live", "folder structure for React", "split this components folder". Complements project-layout with frontend-specific conventions. Do NOT use for backend or general repo structure (project-layout), reviewing rendered UI (ui-review), or shared component governance (design-system).
+description: >-
+  Use when structuring frontend code — components, hooks, store, utils
+  placement, colocation, feature folders, barrel files. Trigger: "organize the
+  frontend", "where should this component live", "folder structure for React".
+  Do NOT use for backend or general repo structure (project-layout),
+  rendered-UI review (ui-review), or shared component governance
+  (design-system).
+
 ---
 
 # Frontend Layout

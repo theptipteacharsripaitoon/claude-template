@@ -1,6 +1,12 @@
 ---
 name: python-performance
-description: Use when Python code is measurably too slow or memory-hungry and needs optimization — profiling, choosing what to fix, verifying the win. Trigger on phrases like "this script is slow", "speed this up", "optimize this function", "memory error on big file", "profile this". Covers measure-first discipline, the optimization order, and chunked processing for large data. Do NOT use for general code review (python-review), refactoring without a measured goal (python-refactor), or SQL query tuning (database-review).
+description: >-
+  Use when Python code is measurably too slow or memory-hungry — profiling,
+  choosing what to fix, verifying the win. Trigger: "this script is slow",
+  "speed this up", "optimize this function", "memory error on big file". Do
+  NOT use for correctness review (python-review) or behavior-preserving
+  restructuring (python-refactor).
+
 ---
 
 # Python Performance

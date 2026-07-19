@@ -77,6 +77,43 @@ def load_cases() -> list[dict]:
     return cases
 
 
+def _git_head() -> str | None:
+    """HEAD of the repo the fixture lives in, or None outside a checkout."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(HERE), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=30,
+        )
+        return proc.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _sha256_file(path: pathlib.Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _descriptions_digest() -> str:
+    """One digest over every SKILL.md frontmatter description, in name order."""
+    import hashlib
+    import re as _re
+
+    skills_root = HERE.parent.parent.parent / ".claude" / "skills"
+    h = hashlib.sha256()
+    for skill_md in sorted(skills_root.glob("*/SKILL.md")):
+        text = skill_md.read_text(encoding="utf-8")
+        m = _re.match(r"^---\n(.*?)\n---\n", text, _re.S)
+        fm = m.group(1) if m else ""
+        d = yaml.safe_load(fm).get("description", "") if fm else ""
+        h.update(skill_md.parent.name.encode())
+        h.update(b"\0")
+        h.update(str(d).encode())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
 def claude_version(claude: str) -> str | None:
     """Best-effort `claude --version` -> the version token, or None."""
     try:
@@ -345,6 +382,16 @@ def main() -> None:
         "model": next((r["model"] for r in rows if r["model"]), None),
         "runs_per_case": args.runs,
         "results_file": out_jsonl.name,
+        # Provenance (v7): what exactly was routed against. The description
+        # digest is what makes a result falsifiable after someone edits a
+        # description — a routing number without it cannot be attributed to a
+        # listing state. Digests are over content, so an uncommitted edit still
+        # changes them; repo_commit locates the baseline.
+        "repo_commit": _git_head(),
+        "os": sys.platform,
+        "case_count": len(cases),
+        "fixture_digest": _sha256_file(FIXTURE),
+        "descriptions_digest": _descriptions_digest(),
         **summary,
     }
     with open(out_summary, "w", encoding="utf-8") as fh:

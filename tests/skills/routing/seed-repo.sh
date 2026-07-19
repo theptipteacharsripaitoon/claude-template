@@ -206,6 +206,125 @@ EOF
     mkdir -p dags include
     printf '# shared SQL lives here\n' > include/README.md
     ;;
+  # ---- v7 full-coverage seeds. One repo shape serves each domain cluster so
+  # 25 new cases cost 6 shapes, and prompts land in a repo that looks real.
+  cov-api-design|cov-config-management|cov-dependency-review|cov-documentation|\
+  cov-fastapi-review|cov-python-performance|cov-python-refactor|cov-python-review|\
+  cov-testing|cov-verification|cov-observability|amb-slow-endpoint|amb-cleanup-tests|amb-env-secret|amb-document-api)
+    mkdir -p app tests_app
+    cat > pyproject.toml <<'EOF'
+[project]
+name = "orders-service"
+version = "0.3.0"
+requires-python = ">=3.11"
+dependencies = ["fastapi==0.115.0", "uvicorn==0.30.0", "pydantic==2.8.0", "requests==2.32.0"]
+EOF
+    cat > app/main.py <<'EOF'
+from fastapi import Depends, FastAPI
+
+from .parsing import parse_order_line
+from .settings import get_settings
+
+app = FastAPI()
+
+
+@app.get("/orders")
+async def list_orders(settings=Depends(get_settings)) -> list[dict]:
+    rows = []
+    with open(settings.data_file, encoding="utf-8") as fh:
+        for line in fh:
+            rows.append(parse_order_line(line))
+    return rows
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
+EOF
+    cat > app/parsing.py <<'EOF'
+def parse_order_line(line: str) -> dict:
+    sku, qty, price = line.strip().split(",")
+    total = int(qty) * float(price)
+    return {"sku": sku, "qty": int(qty), "total": total}
+
+
+def compute_payment(subtotal: float, discount_pct: float) -> float:
+    if discount_pct < 0 or discount_pct > 100:
+        raise ValueError(f"bad discount: {discount_pct}")
+    return round(subtotal * (1 - discount_pct / 100), 2)
+EOF
+    cat > app/settings.py <<'EOF'
+import os
+
+
+def get_settings():
+    class S:
+        data_file = os.environ.get("ORDERS_DATA_FILE", "orders.csv")
+        db_timeout = int(os.environ.get("DB_TIMEOUT", "30"))
+    return S()
+EOF
+    printf 'from app.parsing import compute_payment\n\n\ndef test_payment_basic():\n    assert compute_payment(100.0, 10.0) == 90.0\n' > tests_app/test_parsing.py
+    ;;
+  cov-docker|cov-docker-review)
+    cat > Dockerfile <<'EOF'
+FROM python:3.12
+COPY . /app
+WORKDIR /app
+RUN pip install -r requirements.txt
+CMD ["python", "server.py"]
+EOF
+    printf 'flask==3.0.0\n' > requirements.txt
+    printf 'print("serving")\n' > server.py
+    cat > docker-compose.yml <<'EOF'
+services:
+  web:
+    build: .
+    ports: ["8000:8000"]
+EOF
+    ;;
+  cov-kubernetes)
+    mkdir -p k8s
+    cat > k8s/deployment.yaml <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: orders}
+  template:
+    metadata:
+      labels: {app: orders}
+    spec:
+      containers:
+        - name: orders
+          image: registry.local/orders:1.4.2
+          ports: [{containerPort: 8000}]
+EOF
+    ;;
+  cov-database-migrations)
+    mkdir -p migrations/versions
+    printf '[alembic]\nscript_location = migrations\n' > alembic.ini
+    printf '"""add orders table\n\nRevision ID: a1b2c3\n"""\n\nfrom alembic import op\nimport sqlalchemy as sa\n\n\ndef upgrade():\n    op.create_table("users", sa.Column("id", sa.Integer, primary_key=True))\n\n\ndef downgrade():\n    op.drop_table("users")\n' > migrations/versions/0001_add_users.py
+    ;;
+  cov-design-system|cov-ui-review)
+    mkdir -p src/components src/pages
+    # shellcheck disable=SC2016  # ${variant} is a JSX template literal, not shell
+    printf 'export const Button = ({variant="primary", children}) => <button className={`btn btn-${variant}`}>{children}</button>;\n' > src/components/Button.jsx
+    printf 'export const Checkout = () => <main><h1>Checkout</h1><Button>Pay now</Button></main>;\n' > src/pages/Checkout.jsx
+    printf '{"name":"web","version":"2.1.0"}\n' > package.json
+    ;;
+  cov-agent-design|cov-llm-evaluation|cov-prompt-engineering)
+    mkdir -p prompts evals
+    printf 'You are a support triage assistant. Classify each ticket as BILLING, BUG, or OTHER.\nRespond with JSON: {"category": ..., "confidence": ...}\n' > prompts/triage-system.txt
+    printf '{"input": "I was charged twice", "expected": "BILLING"}\n{"input": "App crashes on login", "expected": "BUG"}\n' > evals/golden.jsonl
+    ;;
+  cov-release-readiness)
+    printf '# Changelog\n\n## [Unreleased]\n- fix: order rounding\n\n## [1.1.0] - 2026-06-01\n- feat: orders endpoint\n' > CHANGELOG.md
+    printf '__version__ = "1.1.0"\n' > version.py
+    printf 'print("app")\n' > app.py
+    ;;
   *)
     echo "seed-repo.sh: unknown case id '$CASE'" >&2
     exit 1

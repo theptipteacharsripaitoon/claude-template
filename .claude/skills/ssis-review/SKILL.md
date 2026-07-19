@@ -1,6 +1,12 @@
 ---
 name: ssis-review
-description: Use when reviewing or hardening SSIS packages (.dtsx) — Data Flows, Derived Columns, connection managers, package configuration — especially pipelines loading Thai data into SQL Server. Trigger on phrases like "review the dtsx", "SSIS package", "Derived Column", "Thai characters look wrong", "dates are 543 years off", "SSIS deadlock", "package keeps failing". Owns the production lessons for Derived Column expressions, invisible-Unicode cleanup, and Buddhist Era dates. Do NOT use for pure T-SQL review (database-review) or Airflow pipelines (airflow-review).
+description: >-
+  Use when reviewing or hardening SSIS packages (.dtsx) — Data Flows, Derived
+  Columns, connection managers — especially Thai data into SQL Server.
+  Trigger: "review the dtsx", "Derived Column", "Thai characters look wrong",
+  "dates are 543 years off". Do NOT use for pure T-SQL review
+  (database-review) or Airflow pipelines (airflow-review).
+
 ---
 
 # SSIS Package Review

@@ -1,6 +1,13 @@
 ---
 name: ci-review
-description: Use when reviewing CI/CD pipeline changes — GitHub Actions workflows, GitLab CI, Azure Pipelines — for security, determinism, and gate completeness. Trigger on phrases like "review the CI workflow", "review the GitHub Actions change", "check the pipeline change", "CI is flaky", "action version bump", "add a CI gate". Covers pinned actions, least-privilege tokens, secret hygiene, and required gates. Claude never edits CI configs without explicit approval (CLAUDE.md §2) — this skill is for REVIEW. Do NOT use for writing app tests (testing) or deploy manifests (kubernetes).
+description: >-
+  Use when reviewing CI/CD pipeline changes — GitHub Actions, GitLab CI, Azure
+  Pipelines — for security, determinism, gate completeness. Trigger: "review
+  the CI workflow", "check the pipeline change", "CI is flaky", "action
+  version bump". Review only; Claude never edits CI configs without approval
+  (CLAUDE.md §2). Do NOT use for app tests (testing) or deploy manifests
+  (kubernetes).
+
 ---
 
 # CI/CD Review

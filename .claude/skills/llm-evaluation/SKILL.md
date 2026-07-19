@@ -1,6 +1,12 @@
 ---
 name: llm-evaluation
-description: Use when measuring LLM output quality — building eval sets, judging outputs, comparing prompts or models, catching regressions before deploy. Trigger on phrases like "evaluate the prompt", "did the new model get worse", "LLM as judge", "golden set", "eval suite", "regression on outputs". Covers golden sets, graded dimensions, judge calibration, and blocking regressions. Do NOT use for writing the prompts (prompt-engineering) or designing the agent (agent-design).
+description: >-
+  Use when measuring LLM output quality — building eval sets, judging outputs,
+  comparing prompts or models, catching regressions before deploy. Trigger:
+  "evaluate the prompt", "did the new model get worse", "LLM as judge",
+  "golden set". Do NOT use for writing or fixing the prompt itself
+  (prompt-engineering) or agent architecture (agent-design).
+
 ---
 
 # LLM Evaluation

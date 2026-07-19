@@ -1,6 +1,12 @@
 ---
 name: design-system
-description: Use when creating or governing shared UI components and design tokens — reuse decisions, token usage, component API consistency, deprecating components. Trigger on phrases like "add a shared component", "should this be a variant", "hardcoded colors", "design tokens", "component library", "two buttons look different". Covers reuse-before-create, tokens-over-literals, and component lifecycle. Do NOT use for reviewing screens (ui-review) or app folder structure (frontend-layout).
+description: >-
+  Use when creating or governing shared UI components and design tokens —
+  reuse decisions, token usage, component API consistency, deprecating
+  components. Trigger: "add a shared component", "should this be a variant",
+  "hardcoded colors", "design tokens". Do NOT use for reviewing rendered UI
+  (ui-review) or frontend folder structure (frontend-layout).
+
 ---
 
 # Design System

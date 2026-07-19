@@ -1,6 +1,13 @@
 ---
 name: security-review
-description: Use when scanning a repository for committed secrets or responding to found credentials — API keys, passwords, tokens, certificates, connection strings — including rotation and git-history cleanup decisions. Trigger on phrases like "scan for secrets", "any credentials committed", "found a password in the code", "leaked API key", "secret in git history", "pre-publication secret scan". Covers scan targets, safe reporting (never print values), rotation, and history cleanup. Do NOT use for building auth/session/upload/web security features (see web-security) or for general secure-coding defaults (CLAUDE.md §7).
+description: >-
+  Use when scanning a repository for committed secrets or responding to found
+  credentials — keys, passwords, tokens, connection strings — rotation and
+  history cleanup. Trigger: "scan for secrets", "leaked API key", "secret in
+  git history", "pre-publication scan". Never print secret values. Do NOT use
+  for building auth/web security features (web-security) or secure-coding
+  defaults (CLAUDE.md §7).
+
 ---
 
 # Security Review — Repository Secret Audit

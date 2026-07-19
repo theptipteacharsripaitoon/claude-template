@@ -1,6 +1,12 @@
 ---
 name: etl-review
-description: Use when reviewing a data pipeline end-to-end — source-to-target correctness, reconciliation, incremental logic, rerun safety — across SQL jobs, SSIS, Airflow, or Python loaders. Trigger on phrases like "review the pipeline", "is the load correct", "numbers don't match the source", "check the incremental logic", "ETL review", "data is missing rows". Covers mapping, row-count reconciliation, watermarks, duplicates, and publish safety. Do NOT use for reviewing a single DAG (airflow-review), a single proc (database-review), or a single package (ssis-review).
+description: >-
+  Use when reviewing a data pipeline end-to-end — source-to-target
+  correctness, reconciliation, incremental logic, rerun safety — across SQL,
+  SSIS, Airflow, or Python loaders. Trigger: "review the pipeline", "numbers
+  do not match the source", "data is missing rows". Do NOT use for a single
+  DAG (airflow-review), proc (database-review), or package (ssis-review).
+
 ---
 
 # ETL Pipeline Review

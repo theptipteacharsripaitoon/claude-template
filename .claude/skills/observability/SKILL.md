@@ -1,6 +1,12 @@
 ---
 name: observability
-description: Use when adding or modifying metrics, traces, structured logs, health checks, dashboards, or alerts. Trigger on phrases like "add a metric", "instrument this", "add tracing", "set up monitoring", "health check", "log this", "alert on", "Prometheus", "OpenTelemetry", "Grafana", "Datadog", or any work touching telemetry/, metrics, tracing, logging code. Covers the four golden signals, structured logging, OpenTelemetry, and SLO-driven alerting.
+description: >-
+  Use when adding or modifying metrics, traces, structured logs, health
+  checks, dashboards, or alerts. Trigger: "add a metric", "instrument this",
+  "add tracing", "health check", "alert on", "Prometheus", "OpenTelemetry". Do
+  NOT use for verifying a repo still works after changes (verification) or
+  dev-log formatting rules (CLAUDE.md §12).
+
 ---
 
 # Observability

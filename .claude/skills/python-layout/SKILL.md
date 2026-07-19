@@ -1,6 +1,12 @@
 ---
 name: python-layout
-description: Use when structuring a Python project — package vs flat modules, where pyproject.toml settings live, __init__.py discipline, entry points, shared-library placement. Trigger on phrases like "structure this Python project", "where should this module go", "package layout", "organize the Python code", "make this importable". Covers Python-specific placement on top of the general project-layout skill. Do NOT use for general repo structure (project-layout), naming and import-order rules (CLAUDE.md §8), or reviewing code (python-review).
+description: >-
+  Use when structuring a Python project — package vs flat modules, pyproject
+  placement, __init__.py discipline, entry points, shared-library placement.
+  Trigger: "structure this Python project", "package layout", "make this
+  importable". Do NOT use for general repo structure (project-layout),
+  import-order rules (CLAUDE.md §8), or code review (python-review).
+
 ---
 
 # Python Project Layout

@@ -1,6 +1,11 @@
 ---
 name: fastapi-review
-description: Use when reviewing or hardening a FastAPI service — routes, dependencies, Pydantic models, async handlers, app startup, error handlers. Trigger on phrases like "review the FastAPI app", "review this endpoint code", "async route", "Depends", "response_model", "the API is slow under load". Composes python-review, api-review, config-management, and docker-review; owns only the FastAPI-specific checks. Do NOT use for API contract design (api-design), general Python review (python-review), or non-FastAPI frameworks.
+description: >-
+  Use when reviewing or hardening a FastAPI service — routes, dependencies,
+  Pydantic models, async handlers, startup, error handlers. Trigger: "review
+  the FastAPI app", "async route", "Depends", "response_model". Do NOT use for
+  API contract design (api-design) or generic Python review (python-review).
+
 ---
 
 # FastAPI Review

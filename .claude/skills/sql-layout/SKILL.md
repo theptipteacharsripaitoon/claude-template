@@ -1,6 +1,13 @@
 ---
 name: sql-layout
-description: Use when organizing or styling SQL code in a repository — folder structure for SQL objects, file naming, deploy-script layout, formatting conventions. Trigger on phrases like "organize these SQL files", "where should this proc live", "SQL folder structure", "clean up this SQL", "SQL file naming". Covers one-object-per-file, deploy-script batching, header comments, and style consistency (conventions are T-SQL/SQL Server-flavored — GO batches, bracketed schemas; adapt for other engines). Do NOT use for schema-change workflow or database object naming (database-migrations), query/proc correctness review (database-review), or writing migrations.
+description: >-
+  Use when organizing or styling SQL code — folder structure for SQL objects,
+  file naming, deploy-script layout, formatting. Trigger: "organize these SQL
+  files", "where should this proc live", "SQL folder structure".
+  T-SQL-flavored conventions. Do NOT use for schema-change workflow
+  (database-migrations), correctness review (database-review), or writing
+  migrations.
+
 ---
 
 # SQL Layout

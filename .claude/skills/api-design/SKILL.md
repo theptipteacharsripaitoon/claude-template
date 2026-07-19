@@ -1,6 +1,13 @@
 ---
 name: api-design
-description: Use when designing, modifying, or reviewing public APIs, REST endpoints, GraphQL schemas, RPC methods, or any service contract exposed beyond a single module. Trigger on phrases like "add an endpoint", "design the API", "change this response", "deprecate", "API version", "breaking change", "OpenAPI", "GraphQL schema", or any file under api/, routes/, controllers/, schema.graphql, openapi.yaml. Covers versioning, backwards compatibility, deprecation cycles, error contracts, and pagination.
+description: >-
+  Use when designing or changing a public API, REST endpoint, GraphQL schema,
+  RPC method, or service contract — versioning, compatibility, deprecation,
+  pagination, error contracts. Trigger: "add an endpoint", "design the API",
+  "breaking change", "OpenAPI", or files under api/, routes/, schema.graphql.
+  Do NOT use for reviewing an API change before merge (api-review) or FastAPI
+  code review (fastapi-review).
+
 ---
 
 # API Design & Backwards Compatibility

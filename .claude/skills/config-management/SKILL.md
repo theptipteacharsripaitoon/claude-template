@@ -1,6 +1,12 @@
 ---
 name: config-management
-description: Use when deciding where configuration lives and how code loads it — env hierarchy, config files vs env vars, Pydantic Settings, per-environment overrides, config for scheduler-run scripts. Trigger on phrases like "where should this setting live", "move this to config", "add an environment variable", "settings class", "dev vs prod config". Covers the precedence hierarchy and typed loading. Do NOT use for the env-var baseline rules (CLAUDE.md §7 owns validate-at-startup and .env.example), secret handling (security-review), or writing .env.example docs (documentation).
+description: >-
+  Use when deciding where configuration lives and how code loads it — env
+  hierarchy, config files vs env vars, Pydantic Settings, per-environment
+  overrides. Trigger: "where should this setting live", "move this to config",
+  "per-env override". Do NOT use for Python package structure (python-layout)
+  or secrets handling rules (CLAUDE.md §7).
+
 ---
 
 # Config Management

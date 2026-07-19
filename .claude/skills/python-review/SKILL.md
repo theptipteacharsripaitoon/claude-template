@@ -1,6 +1,12 @@
 ---
 name: python-review
-description: Use when reviewing Python code changes before they ship — correctness, error handling, typing, resource safety, async discipline. Trigger on phrases like "review this Python code", "review this script", "is this function safe", "check my Python changes", "PR review" on .py files. Covers the Python review checklist and the classic footguns (mutable defaults, broad except, blocking-in-async). Do NOT use for structuring projects (python-layout), refactoring workflow (python-refactor), performance work (python-performance), or writing tests (testing).
+description: >-
+  Use when reviewing Python code changes before they ship — correctness, error
+  handling, typing, resource safety, async discipline. Trigger: "review this
+  Python code", "is this function safe", "check my Python changes". Do NOT use
+  for restructuring (python-refactor), performance (python-performance), or
+  writing tests (testing).
+
 ---
 
 # Python Review

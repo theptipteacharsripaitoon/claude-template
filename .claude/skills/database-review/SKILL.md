@@ -1,6 +1,12 @@
 ---
 name: database-review
-description: Use when reviewing SQL Server / T-SQL database code before it ships — stored procedures, queries, DML jobs, T-SQL batches — for correctness, safety, and performance. Trigger on phrases like "review this proc", "is this query safe", "deadlock problem", "query is slow", "review the SQL job", "check this UPDATE". Covers proc safety settings, transaction scope, batched DML, deadlock avoidance, swap-table publish, and execution-plan review. Do NOT use for schema changes and migrations (database-migrations), SQL file organization (sql-layout), or other engines as-is — the mechanics here are T-SQL-specific.
+description: >-
+  Use when reviewing SQL Server / T-SQL code before it ships — procs, queries,
+  DML jobs — correctness, safety, performance, deadlocks, batching. Trigger:
+  "review this proc", "is this query safe", "deadlock", "query is slow".
+  T-SQL-specific mechanics. Do NOT use for schema migrations
+  (database-migrations) or SQL file layout (sql-layout).
+
 ---
 
 # Database Review (SQL Server / T-SQL)

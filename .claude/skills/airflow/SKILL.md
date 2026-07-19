@@ -1,6 +1,12 @@
 ---
 name: airflow
-description: Use when creating, modifying, or debugging Airflow DAGs, custom operators, hooks, sensors, or plugins. Trigger on phrases like "add a DAG", "fix this task", "DAG is failing", "schedule a job", "Airflow", or any file under dags/, plugins/, include/. Covers DAG authoring, idempotency, deferrable operators, XCom hygiene, and DAG testing. Do NOT use for reviewing a DAG change (airflow-review) or engine-agnostic pipeline review (etl-review).
+description: >-
+  Use when creating, modifying, or debugging Airflow DAGs, operators, hooks,
+  sensors, plugins — or any file under dags/, plugins/, include/. Trigger:
+  "add a DAG", "DAG is failing", "schedule a job", "backfill", "XCom". Do NOT
+  use for reviewing a DAG change (airflow-review) or engine-agnostic pipeline
+  review (etl-review).
+
 ---
 
 # Airflow & Data Pipelines

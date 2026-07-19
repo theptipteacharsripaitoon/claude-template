@@ -1,6 +1,12 @@
 ---
 name: dependency-review
-description: Use when auditing a project's declared dependencies — requirements.txt, pyproject.toml, package.json, poetry.lock, uv.lock, Pipfile — for unused, missing, duplicate, or obsolete packages. Trigger on phrases like "audit the dependencies", "unused packages", "clean up requirements", "do we still need this package", "review the lockfile", "duplicate dependencies". Covers evidence-based classification and safe removal proposals. Do NOT use for adding or upgrading dependencies (CLAUDE.md §7 Supply Chain — installs need user approval) or for CVE triage depth.
+description: >-
+  Use when auditing declared dependencies — requirements.txt, pyproject.toml,
+  package.json, lockfiles — for unused, missing, duplicate, or obsolete
+  packages. Trigger: "audit the dependencies", "unused packages", "outdated
+  deps". Do NOT use for adding a single dependency mid-task (CLAUDE.md §7
+  supply chain) or secret scanning (security-review).
+
 ---
 
 # Dependency Review
