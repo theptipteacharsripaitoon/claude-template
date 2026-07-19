@@ -655,6 +655,105 @@ t DS2 2 check-diff-size.sh "$(wc_ "$DSC")"
 DSW="$(seq 1 400)"
 t DS3 0 check-diff-size.sh "$(wc_ "$DSW")"   # warn tier stays non-blocking
 
+echo "== v7 V7-01: env-template basename must not bypass unrelated path policy =="
+# The allowlist exists to keep committed templates editable. It must suppress
+# ONLY the .env* filename deny — never the directory rules that follow.
+t V701a 0 protect-files.sh "$(fp '/repo/.env.example')"              # root template: still editable
+t V701b 0 protect-files.sh "$(fp '/repo/config/.env.sample')"        # nested ordinary dir: editable
+t V701c 2 protect-files.sh "$(fp '/repo/.git/.env.example')"         # .git segment: hard deny
+t V701d 2 protect-files.sh "$(fp '/repo/.secrets/.env.example')"     # .secrets segment: hard deny
+t_ask V701e protect-files.sh "$(fp '/repo/.github/workflows/.env.example')"
+t_ask V701f protect-files.sh "$(fp '/repo/.claude/hooks/.env.example')"
+t_ask V701g protect-files.sh '{"tool_name":"Edit","tool_input":{"file_path":"/repo/.github/actions/example/.env.example"}}'
+t_ask V701h protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/migrations/.env.example"}}'
+t V701i 2 protect-files.sh "$(fp '/repo/.env')"                      # real secret still denied
+t V701j 2 protect-files.sh "$(fp '/repo/.env.local')"                # non-template suffix still denied
+
+echo "== v7 V7-04/05/06/07: recursive-rm target families (bounded guarantee) =="
+t V704a 2 block-destructive.sh "$(cmd "rm -rf '/srv/data'")"          # quoted absolute target
+t V704b 2 block-destructive.sh "$(cmd 'rm -rf "/srv/data"')"
+# shellcheck disable=SC2016  # single quotes are REQUIRED here: the literal
+# $PWD / ${PWD} / $(pwd) must reach the hook UNEXPANDED — an expanded path is a
+# different test (it would become a plain absolute path, already covered above).
+{
+  t V705a 2 block-destructive.sh "$(cmd 'rm -rf -- "$PWD"')"
+  t V705b 2 block-destructive.sh "$(cmd 'rm -rf -- "${PWD}"')"
+  t V705c 2 block-destructive.sh "$(cmd 'rm -rf -- "$(pwd)"')"
+  t V705d 2 block-destructive.sh "$(cmd 'rm -rf $PWD')"
+}
+t V706a 2 block-destructive.sh "$(cmd 'rm -rf -- .[!.]*')"
+t V706b 2 block-destructive.sh "$(cmd 'rm -rf -- ./.[!.]*')"
+t V706c 2 block-destructive.sh "$(cmd 'rm -rf -- .[^.]*')"
+t V707a 2 block-destructive.sh "$(cmd 'rm -rf -- {*,.[!.]*,..?*}')"
+# Intended-allow controls: named relative cleanup must survive every widening.
+t V70Xa 0 block-destructive.sh "$(cmd 'rm -rf ./build')"
+t V70Xb 0 block-destructive.sh "$(cmd 'rm -rf ../tmp-build')"
+t V70Xc 0 block-destructive.sh "$(cmd 'rm -rf node_modules')"
+t V70Xd 0 block-destructive.sh "$(cmd 'rm -rf dist/assets')"
+
+echo "== v7 V7-03: SQL client long options (short forms already covered) =="
+t V703a 2 block-destructive.sh "$(cmd 'psql --command="DELETE FROM users"')"
+t V703b 2 block-destructive.sh "$(cmd 'psql --command "DELETE FROM users"')"
+t V703c 2 block-destructive.sh "$(cmd 'mysql --execute="DELETE FROM users"')"
+t V703d 2 block-destructive.sh "$(cmd 'mysql --execute "DELETE FROM users"')"
+t V703e 2 block-destructive.sh "$(cmd 'sqlcmd --query "DELETE FROM dbo.Users"')"
+# The quote boundary that keeps documentation allowed is load-bearing.
+t V703f 0 block-destructive.sh "$(cmd 'echo "DELETE FROM users"')"
+t V703g 0 block-destructive.sh "$(cmd 'psql -c "DELETE FROM users WHERE id = 1"')"
+t V703h 0 block-destructive.sh "$(cmd 'printf "%s" "DELETE FROM audit"')"
+
+echo "== v7 V7-08: git global options must not hide the commit subcommand =="
+mkdir -p "$SCRATCH/pbmain" && ( cd "$SCRATCH/pbmain" && git init -q -b main . \
+  && printf 'x\n' > f.txt && git add f.txt \
+  && git -c user.email=t@t -c user.name=t commit -qm init ) >/dev/null 2>&1
+mkdir -p "$SCRATCH/pbfeat" && ( cd "$SCRATCH/pbfeat" && git init -q -b feat/x . \
+  && printf 'x\n' > f.txt && git add f.txt \
+  && git -c user.email=t@t -c user.name=t commit -qm init ) >/dev/null 2>&1
+PB_MAIN="CLAUDE_PROJECT_DIR=$SCRATCH/pbmain"
+PB_FEAT="CLAUDE_PROJECT_DIR=$SCRATCH/pbfeat"
+t_ask V708a block-destructive.sh "$(cmd 'git commit -am wip')" "$PB_MAIN"
+t_ask V708b block-destructive.sh "$(cmd 'git -C . commit -am wip')" "$PB_MAIN"
+t_ask V708c block-destructive.sh "$(cmd '/usr/bin/git commit -am wip')" "$PB_MAIN"
+t_ask V708d block-destructive.sh "$(cmd 'git -c user.name=x commit -am wip')" "$PB_MAIN"
+t_ask V708e block-destructive.sh "$(cmd 'git --no-pager commit -am wip')" "$PB_MAIN"
+t_ask V708f block-destructive.sh "$(cmd 'git --git-dir=.git --work-tree=. commit -am wip')" "$PB_MAIN"
+t_ask V708g block-destructive.sh "$(cmd 'env git commit -am wip')" "$PB_MAIN"
+# Feature branches stay silent, and a word that merely starts with "commit" is not one.
+t_noask V708h block-destructive.sh "$(cmd 'git commit -am wip')" "$PB_FEAT"
+t_noask V708i block-destructive.sh "$(cmd 'git -C . commit -am wip')" "$PB_FEAT"
+t_noask V708j block-destructive.sh "$(cmd 'git commitizen --help')" "$PB_MAIN"
+
+echo "== v7 V7-09: dependency patterns anchored at a command position =="
+# `cargo install` previously matched the GO pattern via the trailing "go" of
+# car-go — right answer, wrong reason. Anchoring fixes the accident; the global
+# tool installs are then asked for DELIBERATELY (plan §10 decision 4).
+t_ask V709a block-destructive.sh "$(cmd 'cargo install ripgrep')"
+t_ask V709b block-destructive.sh "$(cmd 'pipx install black')"
+t_ask V709c block-destructive.sh "$(cmd 'uv tool install ruff')"
+t_ask V709d block-destructive.sh "$(cmd 'gem install bundler')"
+t_ask V709e block-destructive.sh "$(cmd 'go install ./cmd/x')"
+# Words that merely CONTAIN a package-manager name must not match.
+t_noask V709f block-destructive.sh "$(cmd 'mongo install-check --dry-run')"
+t_noask V709g block-destructive.sh "$(cmd 'django-admin get sitemap')"
+t_noask V709h block-destructive.sh "$(cmd './cargo-helper add serde')"
+
+echo "== v7 V7-02: option-first dependency installs (README claims these ask) =="
+t_ask V702a block-destructive.sh "$(cmd 'pip install -q requests')"
+t_ask V702b block-destructive.sh "$(cmd 'pip install -c constraints.txt requests')"
+t_ask V702c block-destructive.sh "$(cmd 'pip install --constraint constraints.txt requests')"
+t_ask V702d block-destructive.sh "$(cmd 'npm --prefix /tmp install lodash')"
+t_ask V702e block-destructive.sh "$(cmd 'pip install --quiet --no-cache-dir flask')"
+t_ask V702k block-destructive.sh "$(cmd 'npm install ./local-package')"
+t_ask V702l block-destructive.sh "$(cmd 'npm install ../shared/pkg')"
+# Restores are NOT a new supply-chain decision and must stay silent — including
+# a restore redirected by an option VALUE that happens to be a local path.
+t_noask V702m block-destructive.sh "$(cmd 'npm install --prefix ./out')"
+t_noask V702f block-destructive.sh "$(cmd 'npm ci')"
+t_noask V702g block-destructive.sh "$(cmd 'npm install')"
+t_noask V702h block-destructive.sh "$(cmd 'pip install -r requirements.txt')"
+t_noask V702i block-destructive.sh "$(cmd 'pip install -q -r requirements.txt')"
+t_noask V702j block-destructive.sh "$(cmd 'uv sync')"
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1

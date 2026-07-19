@@ -47,6 +47,11 @@ BASE_LC="${BASE,,}"
 SEG_LC="/${FILE_LC#/}/"
 
 # --- Allowlist: committed env templates are editable documentation ------------
+# This is an exception to the `.env*` FILENAME deny (below) and to nothing else.
+# It deliberately does NOT short-circuit the hook: a file named `.env.example`
+# sitting inside .git/, .secrets/, .github/workflows/ or .claude/hooks/ is still
+# governed by that directory's rule. Exiting here (as this did before v7) let
+# any protected path be reached by giving the file a template basename.
 ALLOWLIST_BASE=(
   ".env.example"
   ".env.sample"
@@ -54,9 +59,11 @@ ALLOWLIST_BASE=(
   ".env.dist"
   ".env.test.example"
 )
+IS_ENV_TEMPLATE=false
 for allowed in "${ALLOWLIST_BASE[@]}"; do
   if [[ "$BASE_LC" == "$allowed" ]]; then
-    exit 0  # explicit template/sample; editable
+    IS_ENV_TEMPLATE=true
+    break
   fi
 done
 
@@ -74,8 +81,9 @@ base_is() {
 
 # --- DENY: secrets and git internals (hard block) -----------------------------
 DENY=false
-# .env and any .env.<suffix>. Allowlisted templates already returned above.
-if [[ "$BASE_LC" == ".env" || "$BASE_LC" == .env.* ]]; then DENY=true; fi
+# .env and any .env.<suffix>, unless the basename is an explicit template.
+if [[ "$IS_ENV_TEMPLATE" == "false" ]] \
+   && [[ "$BASE_LC" == ".env" || "$BASE_LC" == .env.* ]]; then DENY=true; fi
 base_is "secrets.yaml" "secrets.yml" "credentials.json" "credentials.yaml" && DENY=true
 # Private-key material is a hard deny by name even when the scanner cannot see
 # the (binary) contents. Generic `*.pem` moved to ASK below: a PEM container is
