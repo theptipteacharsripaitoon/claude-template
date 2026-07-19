@@ -44,6 +44,17 @@ DESTRUCTIVE_PATTERNS=(
   "${RM_REC}\\*"                                          # rm -rf *
   "${RM_REC}[\"']?\\\$\\{?HOME\\}?"                       # rm -rf $HOME / ${HOME} (quoted or not)
   "${RM_REC}~"                                            # rm -rf ~
+  # Current-directory destruction (v6). The GLOB forms really delete
+  # (`rm -rf ./*` wipes every visible entry — equivalent to the already-denied
+  # bare `*`); the dot targets (`.`, `./`, `..`) are refused by GNU rm itself
+  # (POSIX), but the intent is destructive and there is zero legitimate use, so
+  # they are denied as defense-in-depth. NAMED relative cleanup (rm -rf
+  # ./build, rm -rf ../tmp-build) deliberately stays allowed: after the
+  # optional quote/dot prefix these patterns require end-of-target or a glob,
+  # so a name character breaks the match.
+  "${RM_REC}[\"']?\\.\\.?/?[\"']?([[:space:]]|$)"         # rm -rf . | ./ | ..
+  "${RM_REC}[\"']?\\./?[\"']?\\*"                         # rm -rf ./* | "./"* | .*
+  "${RM_REC}[\"']?(\\./)?[\"']?\\.\\?\\?\\*"              # rm -rf ./.??* | .??*
   'rm[[:space:]]+--no-preserve-root'                      # explicit override
   'find[[:space:]].*-delete'                              # find ... -delete
   'shred[[:space:]]'                                      # shred
@@ -82,6 +93,16 @@ DESTRUCTIVE_PATTERNS=(
   # stays allowed; quote-wrapped client strings without ';' remain uncovered
   # (documented residual, see hooks README).
   'DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*$' # DELETE without WHERE, end-of-command
+  # Client-wrapped unguarded DELETE with NO ';' (v6): `psql -c "DELETE FROM
+  # users"` executes a full-table delete, but the closing quote defeats both
+  # anchors above (by design — that boundary is what keeps prose allowed). So
+  # match the CLIENT invocation shape explicitly: psql/mysql/sqlcmd, any
+  # intervening options/values, the SQL-carrying flag (-c/-e/-Q, any case via
+  # grep -i), a quote, then DELETE FROM <name> with only ;/spaces before the
+  # closing quote — a WHERE clause still breaks the match. Prose controls
+  # (echo/printf/commit messages) carry no client token and stay allowed.
+  # Other clients (e.g. sqlite3's positional SQL) remain a documented residual.
+  "(psql|mysql|sqlcmd)[[:space:]]+((-{1,2})?[A-Za-z0-9_./=@:-]+[[:space:]]+)*-[ceq][[:space:]]*[\"']DELETE[[:space:]]+FROM[[:space:]]+[][a-zA-Z0-9_.]+[[:space:]]*;?[[:space:]]*[\"']"
 
   # Cluster / cloud
   'kubectl[[:space:]]+delete[[:space:]]+(namespace|ns)[[:space:]]'
@@ -116,6 +137,18 @@ ASK_PATTERNS=(
   # pip option-first install into the user site (a new-package decision, not a
   # restore; -r/-e/-c restores don't carry --user in this template's flows).
   'pip3?[[:space:]]+install[[:space:]]+.*--user([[:space:]]|$)'
+  # Env-redirected installs (v6): a value-taking option (--prefix /tmp,
+  # --target /tmp) or --no-deps defeats the option-skip idioms above, but these
+  # commands still fetch and install NEW code — a supply-chain decision. A
+  # non-default --index-url is one too (dependency-confusion surface), even on
+  # a -r restore; that over-ask is deliberate and documented. npm --prefix asks
+  # only when a package token follows (a bare `npm install --prefix DIR`
+  # lockfile restore stays allowed).
+  "npm[[:space:]]+(install|i)[[:space:]]+.*--prefix([[:space:]]|=).*[[:space:]][@a-zA-Z]"
+  'pip3?[[:space:]]+install[[:space:]]+.*--target([[:space:]]|=|$)'
+  'pip3?[[:space:]]+install[[:space:]]+.*--no-deps([[:space:]]|$)'
+  'pip3?[[:space:]]+install[[:space:]]+.*--index-url([[:space:]]|=|$)'
+  'pip3?[[:space:]]+install[[:space:]]+.*--prefix([[:space:]]|=|$)'
   'poetry[[:space:]]+add[[:space:]]'
   'uv[[:space:]]+add[[:space:]]'                          # uv (modern Python)
   'cargo[[:space:]]+add[[:space:]]'
