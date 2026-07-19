@@ -225,15 +225,44 @@ mkdir -p "$SCRATCH/polyglot" && ( cd "$SCRATCH/polyglot" && git init -q . \
   && printf 'x=1\n' > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$SCRATCH/stubbin:$PATH" "CLAUDE_PROJECT_DIR=$SCRATCH/polyglot" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd8.txt" || got=$?
 if [[ "$got" == 0 ]] && grep -q 'All 3' "$SCRATCH/vd8.txt"; then PASS=$((PASS+1)); echo "PASS VD8    polyglot ran Node + both cargo checks (3 total)"; else FAIL=$((FAIL+1)); echo "FAIL VD8    want exit 0 + 'All 3'; got exit $got: $(head -c 120 "$SCRATCH/vd8.txt" | tr -d '\n')"; fi
-# VD9: checker binary MISSING (bun.lockb selects bun, which is not installed):
-# must honestly report nothing verified, not crash and not claim failure.
+# VD9: checker binary MISSING (bun.lockb selects bun): must honestly report
+# nothing verified, not crash and not claim failure. v6: deterministic on ANY
+# host — the hook runs on a RESTRICTED PATH containing wrappers for exactly the
+# tools it needs, so bun stays absent even on bun-equipped machines.
+RBIN="$SCRATCH/rbin"; mkdir -p "$RBIN"
+for vd_tool in bash git jq grep mkdir date cat tr basename dirname; do
+  vd_path="$(command -v "$vd_tool")" \
+    && printf '#!/bin/sh\nexec "%s" "$@"\n' "$vd_path" > "$RBIN/$vd_tool" \
+    && chmod +x "$RBIN/$vd_tool"
+done
 mkdir -p "$SCRATCH/nodebun" && ( cd "$SCRATCH/nodebun" && git init -q . \
   && printf '{"name":"x","version":"1.0.0","scripts":{"test":"exit 0"}}\n' > package.json \
   && : > bun.lockb \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
-got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nodebun" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd9.txt" || got=$?
-if [[ "$got" == 0 ]] && grep -qi 'no verification' "$SCRATCH/vd9.txt"; then PASS=$((PASS+1)); echo "PASS VD9    missing checker binary -> honest 'no verification', exit 0"; else FAIL=$((FAIL+1)); echo "FAIL VD9    want exit 0 + 'no verification'; got exit $got: $(head -c 120 "$SCRATCH/vd9.txt" | tr -d '\n')"; fi
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodebun" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd9.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -qi 'no verification' "$SCRATCH/vd9.txt"; then PASS=$((PASS+1)); echo "PASS VD9    missing checker binary -> honest 'no verification', exit 0 (restricted PATH)"; else FAIL=$((FAIL+1)); echo "FAIL VD9    want exit 0 + 'no verification'; got exit $got: $(head -c 120 "$SCRATCH/vd9.txt" | tr -d '\n')"; fi
+# VD9b: same fixture with a stub bun PREPENDED to the restricted PATH — presence
+# is controlled too, and the hook must run the package.json test SCRIPT through
+# it (`bun run test`), never Bun's native runner (`bun test` exits 1 "No tests
+# found" on script-only projects — real Bun 1.3.14 behavior).
+BUNSTUB="$SCRATCH/bunstub"; mkdir -p "$BUNSTUB"
+printf '#!/bin/sh\necho "bun $*" >> "%s"\nexit 0\n' "$SCRATCH/bun-argv.txt" > "$BUNSTUB/bun"
+chmod +x "$BUNSTUB/bun"
+: > "$SCRATCH/bun-argv.txt"
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$BUNSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodebun" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd9b.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vd9b.txt" && grep -qx 'bun run test' "$SCRATCH/bun-argv.txt"; then PASS=$((PASS+1)); echo "PASS VD9b   stub bun present -> runs 'bun run test' (package script), exit 0"; else FAIL=$((FAIL+1)); echo "FAIL VD9b   want exit 0 + 'bun run test' argv; got exit $got argv: $(tr '\n' ';' < "$SCRATCH/bun-argv.txt")"; fi
+# VD12: modern TEXT lockfile `bun.lock` (Bun >= 1.2 default) must also select
+# bun. Pre-v6 it fell through to npm — absent from the restricted PATH, so this
+# case fails deterministically before the fix on any host.
+mkdir -p "$SCRATCH/nodebunlock" && ( cd "$SCRATCH/nodebunlock" && git init -q . \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"exit 0"}}\n' > package.json \
+  && printf '{"lockfileVersion": 1}\n' > bun.lock \
+  && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
+  && printf 'x=1\n' > a.py )
+: > "$SCRATCH/bun-argv.txt"
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$BUNSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodebunlock" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd12.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vd12.txt" && grep -qx 'bun run test' "$SCRATCH/bun-argv.txt"; then PASS=$((PASS+1)); echo "PASS VD12   bun.lock (text) selects bun and runs the package script"; else FAIL=$((FAIL+1)); echo "FAIL VD12   want bun selected + 'bun run test' argv; got exit $got: $(head -c 100 "$SCRATCH/vd12.txt" | tr -d '\n') argv: $(tr '\n' ';' < "$SCRATCH/bun-argv.txt")"; fi
 # VD10: multiple failing checks are all counted.
 mkdir -p "$SCRATCH/nodebad2" && ( cd "$SCRATCH/nodebad2" && git init -q . \
   && printf '{"name":"x","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}\n' > package.json \
@@ -574,6 +603,57 @@ done
 git -C "$GI" ls-files --cached | grep -qxF ".env" && gi_ok=0
 git -C "$GI" ls-files --cached | grep -qxF ".env.local" && gi_ok=0
 if [[ "$gi_ok" == 1 ]]; then PASS=$((PASS+1)); echo "PASS GI1    5 templates stage; .env/.env.local stay ignored"; else FAIL=$((FAIL+1)); echo "FAIL GI1    template/gitignore policy disagreement: $(git -C "$GI" ls-files --cached | tr '\n' ' ')"; fi
+
+echo "== block-destructive: v6 current-directory destruction (globs really delete; dot forms are inert but intent-denied) =="
+t BD80 2 block-destructive.sh "$(cmd 'rm -rf ./*')"
+t BD81 2 block-destructive.sh "$(cmd 'rm -rf -- ./*')"
+t BD82 2 block-destructive.sh "$(cmd 'rm -rf ./.??*')"
+t BD83 2 block-destructive.sh "$(cmd 'rm -rf ./* ./.??*')"
+t BD84 2 block-destructive.sh "$(cmd 'rm -rf "./"*')"
+t BD85 2 block-destructive.sh "$(cmd 'rm -rf .')"
+t BD86 2 block-destructive.sh "$(cmd 'rm -rf ..')"
+t BD87 2 block-destructive.sh "$(cmd 'rm -rf ./')"
+t BD88 2 block-destructive.sh "$(cmd 'rm -rf .??*')"
+echo "== block-destructive: v6 named relative cleanup stays allowed =="
+t BD89 0 block-destructive.sh "$(cmd 'rm -rf ./build')"
+t BD90 0 block-destructive.sh "$(cmd 'rm -rf ../temporary-build')"
+t BD91 0 block-destructive.sh "$(cmd 'rm -rf ./dist')"
+echo "== block-destructive: v6 client-wrapped unguarded DELETE without ';' =="
+t BD92 2 block-destructive.sh "$(cmd 'psql -c "DELETE FROM users"')"
+t BD93 2 block-destructive.sh "$(cmd "psql -c 'DELETE FROM users'")"
+t BD94 2 block-destructive.sh "$(cmd 'mysql -e "DELETE FROM users"')"
+t BD95 2 block-destructive.sh "$(cmd 'sqlcmd -Q "DELETE FROM dbo.Users"')"
+t BD96 2 block-destructive.sh "$(cmd 'psql -U admin -d prod -c "DELETE FROM users"')"
+echo "== block-destructive: v6 WHERE-guarded client DELETE and prose stay allowed =="
+t BD97 0 block-destructive.sh "$(cmd 'psql -c "DELETE FROM users WHERE id = 1"')"
+t BD98 0 block-destructive.sh "$(cmd "printf '%s\\n' 'DELETE FROM users'")"
+echo "== block-destructive: v6 env-redirected installs ASK (still fetch+install new code) =="
+t_ask ASK22 block-destructive.sh "$(cmd 'npm install --prefix /tmp lodash')"
+t_ask ASK23 block-destructive.sh "$(cmd 'pip install --target /tmp requests')"
+t_ask ASK24 block-destructive.sh "$(cmd 'pip install --no-deps requests')"
+t_ask ASK25 block-destructive.sh "$(cmd 'pip install --index-url https://example.invalid/simple requests')"
+t_ask ASK26 block-destructive.sh "$(cmd 'npm install --workspace app lodash')"
+t_noask AL13 block-destructive.sh "$(cmd 'npm install --prefix /tmp')"   # restore into a prefix: no package token
+
+echo "== protect-files: v6 directory-segment case variants (same file on Windows/macOS) =="
+t PFD1 2 protect-files.sh "$(fp '/repo/.GIT/config')"
+t PFD2 2 protect-files.sh "$(fp '/repo/.Secrets/token.txt')"
+t PFD3 2 protect-files.sh "$(fp 'C:\repo\.GIT\config')"
+t_ask PFD4 protect-files.sh "$(fp '/repo/.CLAUDE/settings.local.json')"
+t_ask PFD5 protect-files.sh "$(fp '/repo/.Claude/settings.json')"
+t_ask PFD6 protect-files.sh "$(fp '/repo/.GITHUB/actions/example/script.sh')"
+t_ask PFD7 protect-files.sh "$(fp '/repo/.github/ACTIONS/example/script.sh')"
+t_ask PFD8 protect-files.sh "$(fp '/repo/MIGRATIONS/0001.sql')"
+t_ask PFD9 protect-files.sh '{"tool_name":"Edit","tool_input":{"file_path":"/repo/Migrations/0001.sql"}}'
+t_ask PFD10 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/.GITHUB/Workflows/x.ipynb"}}'
+t PFD11 0 protect-files.sh "$(fp '/repo/SRC/App.py')"   # uppercase ordinary dirs still allowed
+
+echo "== check-diff-size: v6 documented override actually unblocks (hooks README) =="
+DSC="$(seq 1 1100)"
+t DS1 0 check-diff-size.sh "$(wc_ "$DSC")" 'CLAUDE_HOOK_OVERRIDE=check-diff-size'
+t DS2 2 check-diff-size.sh "$(wc_ "$DSC")"
+DSW="$(seq 1 400)"
+t DS3 0 check-diff-size.sh "$(wc_ "$DSW")"   # warn tier stays non-blocking
 
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
