@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Unit tests for the routing scoring math (score/summarize) and fixture loader.
+"""Unit tests for the routing scoring math (score/summarize), the fixture
+loader, and the stream-JSON extraction layer (parse_stream/stream_anomaly).
 
 Runs offline — no `claude`/`bash`/model calls. Plain asserts so it works under
 `python tests/skills/routing/test_run_eval.py` or pytest. Guards the metric
-definitions the committed results depend on.
+definitions the committed results depend on, and guards the parser so a
+Claude Code output-schema change fails VISIBLY instead of silently scoring
+every run as a valid no-load.
 """
 import importlib.util
+import json
 import pathlib
 import sys
 
@@ -120,6 +124,116 @@ def test_load_cases_rejects_duplicate_ids(tmp_path=None):
         assert raised, "duplicate ids must abort load_cases"
     finally:
         run_eval.FIXTURE = old
+
+
+# --- stream-JSON extraction fixtures -----------------------------------------
+parse_stream = run_eval.parse_stream
+stream_anomaly = run_eval.stream_anomaly
+
+
+def _init_evt():
+    return json.dumps(
+        {"type": "system", "subtype": "init", "model": "claude-sonnet-5", "version": "2.1.214"}
+    )
+
+
+def _skill_evt(*skills):
+    return json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "Skill", "input": {"skill": s}}
+                    for s in skills
+                ]
+            },
+        }
+    )
+
+
+def _result_evt(is_error=False, result="done"):
+    return json.dumps({"type": "result", "is_error": is_error, "result": result})
+
+
+def test_parse_one_skill():
+    p = parse_stream([_init_evt(), _skill_evt("docker"), _result_evt()])
+    assert p["loaded"] == ["docker"]
+    assert p["model"] == "claude-sonnet-5"
+    assert p["cc_version"] == "2.1.214"
+    assert p["is_error"] is False
+    assert p["malformed"] == 0 and p["saw_result"] is True
+    assert stream_anomaly(p) is None
+
+
+def test_parse_multiple_skills_deduped_sorted():
+    p = parse_stream([_skill_evt("testing", "docker"), _skill_evt("docker"), _result_evt()])
+    assert p["loaded"] == ["docker", "testing"]
+
+
+def test_parse_unrelated_events_load_nothing():
+    text_block = json.dumps(
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}}
+    )
+    other_tool = json.dumps(
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]}}
+    )
+    p = parse_stream([_init_evt(), text_block, other_tool, _result_evt()])
+    assert p["loaded"] == []
+    assert stream_anomaly(p) is None  # clean stream: a true no-load stays valid
+
+
+def test_parse_malformed_line_counts_as_anomaly():
+    p = parse_stream([_init_evt(), '{"type": "assistant", CORRUPT', _skill_evt("docker"), _result_evt()])
+    assert p["loaded"] == ["docker"]  # later events still parsed
+    assert p["malformed"] == 1
+    assert "malformed" in stream_anomaly(p)
+
+
+def test_parse_error_event_captured():
+    p = parse_stream([_init_evt(), _result_evt(is_error=True, result="boom")])
+    assert p["is_error"] is True
+    assert "boom" in p["error"]
+
+
+def test_parse_missing_skill_input_not_counted_no_crash():
+    no_input = json.dumps(
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Skill", "input": {}}]}}
+    )
+    null_input = json.dumps(
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Skill"}]}}
+    )
+    p = parse_stream([no_input, null_input, _result_evt()])
+    assert p["loaded"] == []
+    assert stream_anomaly(p) is None
+
+
+def test_parse_schema_variation_fails_visibly():
+    # content not a list / message absent / top-level non-object: none of these
+    # may crash, and none may silently pass as a clean stream.
+    weird_content = json.dumps({"type": "assistant", "message": {"content": "oops"}})
+    no_message = json.dumps({"type": "assistant"})
+    non_object = json.dumps(["not", "an", "object"])
+    p = parse_stream([weird_content, no_message, non_object, _result_evt()])
+    assert p["loaded"] == []
+    assert p["malformed"] >= 2  # weird content + non-object are anomalies
+    assert stream_anomaly(p) is not None
+
+
+def test_parse_garbage_only_stream_is_anomalous_not_noload():
+    p = parse_stream(["plain text banner", "% not json", ""])
+    assert p["loaded"] == []
+    assert p["saw_result"] is False
+    a = stream_anomaly(p)
+    assert a is not None and "no terminal result" in a
+
+
+def test_parse_empty_stream_missing_result_is_anomalous():
+    # A stream that just ends (crash before the result event) must not score.
+    p = parse_stream([_init_evt(), _skill_evt("docker")])
+    assert stream_anomaly(p) is not None
 
 
 def main():
