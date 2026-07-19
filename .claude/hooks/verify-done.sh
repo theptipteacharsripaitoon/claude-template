@@ -84,7 +84,9 @@ RAN=0  # how many checks actually executed — distinguishes "passed" from "none
 detect_node_pm() {
   if [[ -f pnpm-lock.yaml ]]; then echo "pnpm"
   elif [[ -f yarn.lock ]]; then echo "yarn"
-  elif [[ -f bun.lockb ]]; then echo "bun"
+  # bun.lock is the TEXT lockfile Bun >= 1.2 writes by default; bun.lockb is
+  # the older binary format. Either one is Bun-exclusive.
+  elif [[ -f bun.lock || -f bun.lockb ]]; then echo "bun"
   elif [[ -f package-lock.json ]]; then echo "npm"
   else echo "npm"; fi
 }
@@ -109,7 +111,11 @@ if [[ -f package.json ]]; then
       RAN=$((RAN+1)); run_check "lint" "$PM" run lint || FAILED=$((FAILED+1))
     fi
     if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "test" "$PM" test || FAILED=$((FAILED+1))
+      # `run test`, never bare `test`: identical for npm/pnpm/yarn, and for Bun
+      # it is the only correct form — `bun test` invokes Bun's NATIVE runner,
+      # which ignores the package.json script this check is gated on (on a
+      # script-only project real Bun exits 1 "No tests found").
+      RAN=$((RAN+1)); run_check "test" "$PM" run test || FAILED=$((FAILED+1))
     fi
   fi
 fi
