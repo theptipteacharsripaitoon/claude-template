@@ -383,3 +383,85 @@ the residual is the right move.
 - **P3**: D-DEP-1 (close value-taking-option dependency gaps + document the
   policy), D-BOOT-1 (document unknown-file residual), CHANGELOG v6 entry,
   owner-only proposals (license, release/version policy) prepared inactive.
+
+---
+
+# Post-implementation validation (appended after Phase 3)
+
+Sections 1–17 above are the unmodified blind-audit record. Everything below
+was measured after the v6 fixes landed.
+
+## 18. Implementation record
+
+| Commit | Change |
+|---|---|
+| `711c871` | test: 41 new regression cases (failing-first) |
+| `6791547` | fix: verify-done detects `bun.lock`, runs `$PM run test` |
+| `5366e92` | fix: protect-files case-folds directory segments |
+| `46edf42` | fix: block-destructive — current-dir rm targets, client-wrapped DELETE, env-redirected installs |
+| `b40acec` | fix: check-diff-size honors `CLAUDE_HOOK_OVERRIDE` |
+| `bddaeaf` | docs: hooks README / claude-init / CHANGELOG sync + owner proposals |
+
+**Failing-first evidence:** with only `711c871` applied the suite reported
+`RESULT: pass=197 fail=31` — the 31 failures were exactly the new
+deny/ask/bun/override cases (VD9b's argv log captured the wrong `bun test`
+command verbatim; VD12 captured the npm misdetection), and all 187 legacy
+cases plus the 10 new behavior-locking controls stayed green.
+
+## 19. Final battery (all on final code)
+
+| Check | Result |
+|---|---|
+| Complete hook suite | **228/228 pass**, exit 0 — real 4m07s (Windows/MSYS) |
+| Hook installer | exit 0 |
+| ShellCheck v0.10.0 (Docker, LF) | exit 0, all 10 scripts |
+| Skill catalog | 37 skills, pass |
+| Routing scoring/parser | 15/15 |
+| Routing-result consistency | pass (4 sets, fixture=20) |
+| `py_compile` (5 files) | exit 0 |
+| settings JSON / workflow+fixture YAML | valid |
+| Generated-file cleanliness | clean |
+| Markdown links | 62 files, pass |
+| Live routing eval | **not run — not required** (no skill description or invocation behavior changed) |
+
+Matrix re-runs on the fixed hooks: recursive-rm — all 9 destructive
+current-dir forms DENY while `./build`, `../temporary-build`, `build/`,
+`node_modules` stay ALLOW; protected paths — **0 allows across all 36
+variant×tool runs** (deny for `.GIT`/`.Secrets` variants incl. backslash form,
+ask for the rest; `SRC/App.py` control still allows); SQL — all 4 no-`;`
+client forms + options variant DENY, WHERE-guarded and all prose controls
+ALLOW; dependencies — 24 ask / 9 restore-allow (every restore preserved); Bun —
+`bun.lock`, `bun.lockb`, and both-lockfile projects all select bun and invoke
+exactly `bun run test` (stub argv), absent-bun runs stay honestly "no
+verification" on a restricted PATH; diff-size override allows+logs with the
+env var set and still blocks without it. False-positive profile unchanged:
+the documented prose denials (`"/bin/rm"`, DROP/TRUNCATE mentions) and prose
+allows (`echo 'rm -rf /'`, all DELETE prose) are identical to §10.
+
+## 20. Post-implementation score (same rubric)
+
+| Category | Weight | Blind | Final | Basis for change |
+|---|---|---|---|---|
+| Technical correctness | 15% | 8.3 | 9.2 | three P1s fixed with failing-first regressions; residuals documented honestly |
+| Skill trigger quality | 15% | 8.8 | 8.8 | unchanged — no routing work this cycle (16/37 positive coverage stands) |
+| Hook correctness | 15% | 8.2 | 9.3 | all confirmed gaps closed; controls prove no over-widening |
+| Conflict avoidance | 10% | 9.0 | 9.0 | unchanged |
+| Safety & permissions | 10% | 8.7 | 9.2 | override contract consistent everywhere; four confirmation levels documented |
+| Testing & evaluation | 15% | 8.5 | 9.2 | 228 cases; host-independent bun; both-direction override; case variants |
+| Context efficiency | 5% | 8.5 | 8.5 | unchanged |
+| Team usability | 5% | 9.0 | 9.0 | unchanged |
+| Maintainability | 5% | 9.0 | 9.0 | unchanged |
+| Public-template readiness | 5% | 7.0 | 7.5 | owner decisions consolidated into actionable proposals; still no license/tag |
+| **Weighted total** | | **8.5** | **9.0** | |
+
+**9.0 gate check:** no unresolved P0/P1 ✓ · Bun correct and deterministic ✓ ·
+destructive current-directory globs covered ✓ · protected directory case
+variants addressed ✓ · false-positive controls pass ✓ · documentation matches
+implementation ✓ · final CI green on the exact final commit — verified at push
+time and recorded in the pull request (the report cannot contain its own
+commit's CI result).
+
+**9.5 is explicitly NOT claimed:** routing coverage is 20 cases / 16 of 37
+skills (gate requires broad repeated coverage of all 37), recall 0.963 vs the
+>0.90 gate ✓ but precision/conflict evidence spans only those cases;
+license/release/public-packaging remain owner decisions (prepared, inactive).

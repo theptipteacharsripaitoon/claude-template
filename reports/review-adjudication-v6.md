@@ -343,3 +343,37 @@ chosen, no scanner installed, no tag created, per the standing constraints.
 
 Each fix lands with a failing-first regression, then focused tests, then the
 complete suite + ShellCheck + offline checks (Phase 4 battery).
+
+---
+
+# Post-implementation results (appended)
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Bun test command | **Fixed** `6791547` — `$PM run test`; VD9b/VD12 assert the exact argv |
+| 2 | `bun.lock` detection | **Fixed** `6791547` — both lockfiles select bun |
+| 3 | Bun host-dependence | **Fixed** `711c871` — restricted-PATH wrappers + controlled stub (absent AND present are constructed, not assumed) |
+| 4 | Segment case | **Fixed** `5366e92` — folded segments + folded settings comparison; PFD1–PFD11 |
+| 5 | Current-dir globs | **Fixed** `46edf42` — BD80–BD88 deny, BD89–BD91 named cleanup stays allowed |
+| 6 | Client-wrapped SQL | **Fixed** `46edf42` — BD92–BD96 deny; BD97/BD98 + BD74/BD75 controls allowed |
+| 7 | Dependency options | **Fixed** `46edf42` — ASK22–ASK25; AL13 restore control; `--workspace` was already covered |
+| 8 | Quoted-path FPs | **Documented** (audit §10/§19) — behavior retained by design, trade-off measured incl. a live in-session denial |
+| 9 | Bootstrap cwd doc | **Fixed** `bddaeaf` — parenthetical scoped to assembly; success-path `cd` stated |
+| 10 | Diff-size override | **Fixed** `b40acec` (code honors the documented contract) — DS1/DS2/DS3 |
+| 11 | Secret-output wording | **Fixed** `bddaeaf` — values to *neither* stderr nor log |
+| 12 | Permission-flow conflation | **Fixed** `bddaeaf` — four confirmation levels documented; "never silently executed" corrected |
+| 13 | Copy-then-prune | **Documented** `bddaeaf` — model retained on measurement (251 MB ≈ +0.1 s); unknown-file residual named in the header |
+| 14 | Routing coverage | **Documented limitation** — no fixture change without a live run (consistency gate); 9.5 not claimed |
+| 15 | Manual-only skills | **Evaluated, no change** — live-eval evidence against for 2, no evidence for 2 |
+| 16 | Context size | **Measured, no change** — reviewer's own clarity guardrail applied |
+| 17 | `eval` | **Obsolete** (v5) |
+| 18 | Final-commit CI | Baseline recorded blind (run 29681254044 on `2c35201`); the final branch head's run is verified after push and recorded in the PR |
+| 19 | Suite runtime | Windows Git Bash: 3m49s @187 → 4m07s @228; CI duration recorded with the final run in the PR; WSL not installed on this host (stated, not measured) |
+| Owner | License / scanner / release / community / template settings | **Proposals prepared, inactive** — `reports/proposal-owner-decisions-v6.md` |
+
+Final battery on the finished branch: hook suite **228/228**, installer 0,
+ShellCheck v0.10.0 clean (10 scripts), catalog 37, routing offline 15/15,
+consistency pass, `py_compile` clean, settings/workflow/fixture valid,
+cleanliness clean, links 62 files pass. Full matrix re-runs and the
+post-implementation rescore (8.5 → 9.0, 9.5 explicitly not claimed) are in
+`claude-independent-audit-v6.md` §18–§20.
