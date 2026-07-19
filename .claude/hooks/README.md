@@ -18,8 +18,8 @@ Restart Claude Code after install. Test by asking it to run `rm -rf /tmp/anythin
 
 | Hook | Event | Purpose | Behavior |
 |---|---|---|---|
-| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `-- /`, `$HOME`/`${HOME}` targets, and current-directory destruction: `./*`, `"./"*`, `./.??*`, `.`, `..` — named cleanup like `./build` stays allowed), force-push (incl. quoted `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified, with or without a trailing `;` at end-of-command, incl. client-wrapped `psql -c`/`mysql -e`/`sqlcmd -Q "DELETE FROM t"` without `;`), etc.; **asks** for dependency install/upgrade/remove — option-first spellings included (`npm install --save-dev x`, `pip install --user x`) and env-redirected installs (`npm install --prefix D pkg`, `pip install --target D pkg`, `--no-deps`, `--index-url`); lockfile *restores* like `npm ci` stay allowed — and for `git commit` while on a protected branch (`main`/`master`/`production`/`release/*`) | Hard block (exit 2) / ask |
-| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*`, credentials, `id_rsa`, `*.key`/`*.p12`/`*.pfx`, `.git/`) → hard block — **all basenames case-folded** (`ID_RSA` gates like `id_rsa`; Windows/macOS treat them as the same file); CI/infra/migrations/lockfiles/**both** settings layers (`settings.json` **and** `settings.local.json`)/hooks/`*.tf`/`*.pem`/`.netrc`/the whole `.github/actions/` subtree/`.gitmodules` → **ask** | Deny / ask |
+| `block-destructive.sh` | PreToolUse: Bash | Blocks `rm -rf` (any flag spelling, incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `-- /` — the target may be quoted too (`rm -rf '/srv/data'`, v7), `$HOME`/`${HOME}`/`$PWD`/`${PWD}`/`$(pwd)` targets (v7), brace sweeps `{…}` (v7), and current-directory destruction: `./*`, `"./"*`, `./.??*`, `.[!.]*`/`.[^.]*` (v7), `.`, `..` — named cleanup like `./build` stays allowed), force-push (incl. quoted `+refspec`), `terraform apply`, SQL destruction (case-insensitive, schema-qualified, with or without a trailing `;` at end-of-command, incl. client-wrapped in **short or long** flag form: `psql -c`/`--command`, `mysql -e`/`--execute`, `sqlcmd -Q`/`--query`, `=` or space before the quote — v7), etc.; **asks** for dependency install/upgrade/remove — option-first spellings included (`npm install --save-dev x`, `pip install -q x`, `pip install -c constraints.txt x` — pip is decided by explicit restore-vs-install logic, not one regex, v7), env-redirected installs (`npm --prefix D install pkg` global-option-first too, `pip install --target D pkg`, `--no-deps`, `--index-url`), local-path installs (`npm install ./pkg`, v7), and global tool installs (`cargo install`, `pipx install`, `uv tool install` — deliberate v7 policy, matching `gem`/`go`); all dependency asks are anchored at a command position so `mongo install`/`django get`/prose cannot match (v7); lockfile *restores* like `npm ci`, `pip install -r`, `uv sync` stay allowed — and asks for `git commit` while on a protected branch (`main`/`master`/`production`/`release/*`), **including** with global options between `git` and `commit` (`git -C . commit`, `git -c k=v commit`, `git --no-pager commit`) and path/env invocations (`/usr/bin/git`, `env git`) (v7) | Hard block (exit 2) / ask |
+| `protect-files.sh` | PreToolUse: Edit/Write/NotebookEdit | Secrets and private keys (`.env*`, credentials, `id_rsa`, `*.key`/`*.p12`/`*.pfx`, `.git/`) → hard block — **all basenames case-folded** (`ID_RSA` gates like `id_rsa`; Windows/macOS treat them as the same file); CI/infra/migrations/lockfiles/**both** settings layers (`settings.json` **and** `settings.local.json`)/hooks/`*.tf`/`*.pem`/`.netrc`/the whole `.github/actions/` subtree/`.gitmodules` → **ask**. The `.env.example`/`.sample`/`.template`/`.dist` allowlist suppresses **only the `.env*` filename deny** — the same basename inside `.git/`, `.secrets/`, workflows, actions or hooks still hits that directory's rule (v7; previously the basename bypassed the whole hook) | Deny / ask |
 | `scan-secrets.sh` | PreToolUse: Edit/Write/NotebookEdit | Blocks writes containing AWS/GitHub/Stripe/etc. token shapes | Hard block (exit 2) |
 | `check-diff-size.sh` | PreToolUse: Edit/Write/NotebookEdit | Warns at 300+ line changes, blocks at 1000+ | Warn / block |
 | `verify-done.sh` | Stop | Reminds about Definition of Done if code changed | Reminder / block |
@@ -32,8 +32,8 @@ CLAUDE.md §2 says several classes of command "require explicit user confirmatio
 
 | Tier | Behavior | Examples |
 |---|---|---|
-| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, `$HOME`/`${HOME}`), current-directory destruction (`rm -rf ./*`, `"./"*`, `./.??*`, `.`, `..` — named cleanup `rm -rf ./build` stays allowed), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated, ending the command, **or** client-wrapped without `;`: `psql -c`/`mysql -e`/`sqlcmd -Q "DELETE FROM t"`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
-| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings and env-redirected installs (`--prefix`/`--target`/`--no-deps`/`--index-url` — a non-default index is a supply-chain decision even for a restore); lockfile *restores* like `npm ci` are allowed; `git commit` while on `main`/`master`/`production`/`release/*` (CLAUDE.md §2) |
+| **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, a quoted target `'/srv/data'`, `$HOME`/`${HOME}`/`$PWD`/`${PWD}`/`$(pwd)`, brace sweeps `{…}`), current-directory destruction (`rm -rf ./*`, `"./"*`, `./.??*`, `.[!.]*`, `.[^.]*`, `.`, `..` — named cleanup `rm -rf ./build` stays allowed), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated, ending the command, **or** client-wrapped without `;` in short or long flag form: `psql -c`/`--command`, `mysql -e`/`--execute`, `sqlcmd -Q`/`--query`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
+| **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings (`pip install -q x` — pip uses explicit restore-vs-install logic), env-redirected installs (`--prefix`/`--target`/`--no-deps`/`--index-url` — a non-default index is a supply-chain decision even for a restore), local-path installs (`npm install ./pkg`) and global tool installs (`cargo install`, `pipx install`, `uv tool install`, `gem install`, `go install`); all anchored at a command position so prose and near-miss names (`mongo install`) never match; lockfile *restores* like `npm ci` are allowed; `git commit` while on `main`/`master`/`production`/`release/*` incl. global options between `git` and `commit` and path/env invocations (CLAUDE.md §2) |
 | **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here. Surfaced by Claude Code's own permission prompt **unless the user has pre-allowlisted the command** in their permission settings; the hook layer adds no second gate for these |
 | **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; SQL through clients whose statement is a positional argument (`sqlite3 db "DELETE FROM x"`) — the psql/mysql/sqlcmd flag forms are covered, and the quote boundary still keeps documentation text (`echo "DELETE FROM users"`, a commit message) allowed |
 
@@ -207,9 +207,41 @@ Quarterly:
 - Remove patterns that have not blocked anything legitimate in 90 days.
 - Add patterns from incidents that slipped through.
 
+## Bounded guarantee (what the hooks DO promise)
+
+Falsifiable statements, each pinned by regression tests and the policy corpus
+(`tests/hooks/corpus.jsonl`). Anything not listed here is not promised.
+
+1. **Recursive deletion.** `block-destructive` denies a recursive-`rm` whose
+   target token — after an optional `--`, an optional quote, and an optional
+   `./` — begins with `/`, `~`, a `$HOME`/`$PWD` expansion, `$(pwd)`, `*`, `{`,
+   or a dot-target/dot-glob form (`.`, `..`, `.*`, `.??*`, `.[!.]*`, `.[^.]*`).
+   It does **not** parse shell: a variable holding a path, command substitution
+   other than `$(pwd)`, an alias, or any non-`rm` deletion is out of scope.
+2. **Protected-branch commits.** The ask fires for `git commit` on
+   `main`/`master`/`production`/`release/*`, including global options between
+   `git` and `commit` and path/env invocations. The branch is always read from
+   `CLAUDE_PROJECT_DIR`; **`git -C <other>`/`--git-dir` targets are not
+   resolved** — a commit aimed at a different repository is evaluated against
+   the project's branch, not the target's.
+3. **SQL.** Unguarded `DELETE`/`DROP`/`TRUNCATE` is denied when `;`-terminated,
+   at end of command, or carried by a `psql`/`mysql`/`sqlcmd` flag in short
+   (`-c`/`-e`/`-Q`) or long (`--command`/`--execute`/`--query`) form. Clients
+   taking SQL positionally (`sqlite3 db "…"`) are not covered. Documentation
+   text mentioning a statement stays allowed — that boundary is deliberate.
+4. **Strict Stop.** With `CLAUDE_VERIFY_BLOCK=1` the Stop hook exits 2 **only**
+   when a checker is discovered, executes, and fails, on the first Stop of a
+   turn. No checker found / toolchain missing → exit 0 with an honest "nothing
+   was verified". It blocks **at most once** per turn, and reads the working
+   tree — changes already committed during the session are invisible. This is
+   **best-effort verification, not a hard Definition-of-Done gate**.
+5. **Universally:** these hooks are a prevention layer built on regex over the
+   literal command string — effective against a *careless* agent, **not** a
+   security boundary against an adversarial one.
+
 ## Limitations (what these hooks do NOT do)
 
-Be honest about the bar. These hooks are a **prevention layer with regex pattern-matching**, not a complete governance system. Things they do *not* catch:
+Things they do *not* catch:
 
 **Semantic equivalents of blocked patterns.** A `rm -rf /` block does not catch:
 - `python -c "import shutil; shutil.rmtree('/')"`

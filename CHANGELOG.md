@@ -4,6 +4,66 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ## [Unreleased]
 
+### Fixed (seventh cycle)
+- **protect-files (P1)**: the `.env.example`/`.sample`/`.template`/`.dist`
+  allowlist suppresses only the `.env*` filename deny — previously it exited
+  the whole hook, so ANY protected path (`.git/`, `.secrets/`, workflows,
+  actions, hooks, migrations) could be reached by giving the file a template
+  basename. Root/nested templates stay editable (V7-01).
+- **block-destructive (P1, SQL)**: long client flags now covered —
+  `psql --command=`/`--command `, `mysql --execute=`, `sqlcmd --query `, with
+  `=` or space before the quoted statement; short `-c`/`-e`/`-Q` unchanged and
+  the quote boundary keeping prose (`echo "DELETE FROM users"`) allowed is
+  preserved (V7-03).
+- **block-destructive (P1, deps)**: pip installs are decided by explicit
+  restore-vs-install logic instead of one regex — `pip install -q requests`,
+  `-c`/`--constraint` spellings now ask; `-r`/`--requirement` restores stay
+  allowed whatever other options are present. npm asks with global options
+  before the subcommand (`npm --prefix /tmp install lodash`) and for
+  local-path installs (`npm install ./pkg`); bare option-redirected restores
+  (`npm install --prefix ./out`) stay allowed (V7-02).
+- **block-destructive (P2, git)**: the protected-branch ask survives global
+  options between `git` and `commit` (`-C .`, `-c k=v`, `--no-pager`,
+  `--git-dir/--work-tree`) and path/env invocations (`/usr/bin/git`,
+  `env git`); command-position class now matches RM_WORD. `git -C <other>`
+  target branches remain unresolved by design — documented in the bounded
+  guarantee (V7-08).
+- **block-destructive (P2, anchoring)**: every dependency ask pattern is
+  anchored at a command position — `cargo install` no longer matches through
+  the *go* pattern by accident, and `mongo install`/`django get`/prose can
+  no longer trigger asks (V7-09).
+
+### Security (seventh cycle)
+- **block-destructive**: recursive-deletion coverage extended to the measured
+  destroyers — quoted absolute targets (`rm -rf '/srv/data'`),
+  `$PWD`/`${PWD}`/`$(pwd)` (destroyed the whole tree in sandbox), dot-glob
+  character classes `.[!.]*`/`.[^.]*` (deleted `.git/`), and brace sweeps
+  `{*,.[!.]*,..?*}` (deleted everything). Named relative cleanup
+  (`rm -rf ./build`, `node_modules`, `dist/assets`) stays allowed (V7-04/05/06/07).
+- **block-destructive (policy)**: global tool installs now ask deliberately —
+  `cargo install`, `pipx install`, `uv tool install` — matching the existing
+  `gem install`/`go install` behavior; previously `pipx`/`uv tool` were
+  allowed outright and `cargo` asked only by accident (V7-13; reversible
+  one-line policy choice).
+
+### Performance (seventh cycle)
+- **block-destructive**: one combined-alternation grep decides match/no-match;
+  the per-pattern loop runs only on a hit to name the pattern in the message.
+  Measured on Windows Git Bash: ordinary-command p50 2179 ms → 275 ms,
+  p95 2409 ms → 303 ms (~8×; ~170 process spawns → ~4). Behavior unchanged —
+  291/291 regressions and the 205-row corpus verify the restructure (V7-10).
+
+### Added (seventh cycle)
+- **tests/hooks/corpus.jsonl + run-corpus.sh**: 205-row labeled policy corpus
+  replayed through the real hooks; separates contract (`expected`) from
+  semantic ideal and out-of-scope rows; emits a confusion matrix. Baseline at
+  the audited commit: 27 contract violations, dangerous-action recall 0.821.
+  After the v7 fixes: 0 violations, recall 1.000, false-deny rate 0.000.
+- **hooks README**: "Bounded guarantee" section — five falsifiable statements
+  covering recursive deletion, protected-branch commits, SQL, strict Stop
+  (best-effort, not a hard DoD gate), and the universal regex limit.
+- 66 new hook regressions (V7-01…09 families plus intended-allow controls).
+
 ### Fixed (sixth cycle)
 - **verify-done (P1)**: Bun's modern text lockfile `bun.lock` (default since
   Bun 1.2) now selects bun — previously only `bun.lockb` did, so new Bun
