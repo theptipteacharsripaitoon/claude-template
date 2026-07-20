@@ -16,7 +16,7 @@
 | Platform | Status | Evidence |
 |---|---|---|
 | Linux (ubuntu-24.04) | **Supported** | Full CI suite on every push |
-| Windows 11 + Git Bash | **Supported** | Hook suite, corpus, installer tests, and latency benchmarks run on it throughout the v7 cycle |
+| Windows 11 + Git Bash | **Supported** | Hook suite, corpus, installer tests, and latency benchmarks run on it throughout the v7/v8 cycles. Node-based verify-done fixtures use `node -e "process.exit(N)"` (not a bare `exit N` npm script) so the suite no longer depends on npm's `script-shell` setting — the v7 `289/291` vs `291/291` split came from that. Measured config: npm 9.5.1, node ≥ 18, `npm config get script-shell` = default. |
 | WSL2 | Expected to work, **not measured** | Same toolchain as Linux; no dedicated run recorded yet |
 | macOS | Expected to work, **not measured** | Requires Homebrew bash ≥ 4; no dedicated run recorded yet |
 
