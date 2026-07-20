@@ -131,6 +131,175 @@ else
   ok T4 "non-project dir refused"
 fi
 
+echo "== failure injection (post-first-stage stages must fail closed) =="
+# Each FI case shadows one binary invoked in the post-staging phase (profile
+# transform / version stamp / manifest generation / final publish). The
+# bootstrap MUST return non-zero, publish nothing, and print no success line.
+# Shims live in $SCRATCH so they never leak to the harness's own PATH.
+
+# ci_shim <projects-dir> <template-dir> <shim-dir> <args...>
+# Runs claude-init in a throwaway bash with the shim directory PREPENDED to
+# PATH in the environment (so binaries invoked from the sourced function
+# resolve to the shim first). The env-form is required: inline `PATH=x source`
+# only sets PATH for the source BUILTIN itself; later external command
+# lookups from inside the function would ignore it.
+ci_shim() {
+  local pd="$1" td="$2" shim="$3"; shift 3
+  local q="" a
+  for a in "$@"; do q+=" $(printf '%q' "$a")"; done
+  env "PATH=$shim:$PATH" bash -c "source '$REPO/claude-init.sh' && CLAUDE_PROJECTS_DIR='$pd' CLAUDE_TEMPLATE_DIR='$td' claude-init$q"
+}
+
+# make_shim <cmd> <fail-substring>  →  prints shim dir on stdout
+# Empty fail-substring = fail every invocation. Non-empty = fail only when
+# joined argv contains the substring; pass through to real binary otherwise.
+make_shim() {
+  local cmd="$1" match="$2"
+  local dir; dir=$(mktemp -d "$SCRATCH/shim-${cmd}-XXXX")
+  local real; real="$(command -v "$cmd")"
+  {
+    printf '#!/usr/bin/env bash\n'
+    if [[ -n "$match" ]]; then
+      # These printf format strings are the SHIM's source, emitted literally —
+      # $args/$@ must NOT expand here (they expand when the shim runs). SC2016.
+      # shellcheck disable=SC2016
+      printf 'args="$*"\n'
+      # shellcheck disable=SC2016
+      printf 'case "$args" in *%s*) exit 77 ;; esac\n' "$match"
+      printf 'exec %q "$@"\n' "$real"
+    else
+      printf 'exit 77\n'
+    fi
+  } > "$dir/$cmd"
+  chmod +x "$dir/$cmd"
+  echo "$dir"
+}
+
+# assert_failure_closed <label> <projects-dir> <output-str>
+# Fails the bootstrap must have: exit != 0, no destination dir, no success line.
+assert_failure_closed() {
+  local label="$1" pd="$2" out="$3" name="$4"
+  local ok_dest=0 ok_msg=0
+  # (Caller already invoked ci_shim and asserted its non-zero exit; here we
+  # only assert on the published-state outputs it produced.)
+  # Ensure dest not published
+  [[ ! -e "$pd/$name" ]] && ok_dest=1
+  # Success line must not have been printed
+  if ! grep -qE "^✅ Project '$name' bootstrapped" <<<"$out"; then ok_msg=1; fi
+  if (( ok_dest == 1 && ok_msg == 1 )); then
+    ok "$label" "failed closed: no dest, no success line"
+  else
+    local why=""
+    (( ok_dest == 0 )) && why+="dest exists; "
+    (( ok_msg == 0 ))  && why+="success line printed; "
+    bad "$label" "${why%; }"
+  fi
+}
+
+PDI="$SCRATCH/pinj"
+
+# FI1 — strict-profile jq failure (P1 external review reproduction).
+SHIM=$(make_shim jq "CLAUDE_VERIFY_BLOCK")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" --profile strict fi1 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI1 "$PDI" "$out" fi1
+else
+  bad FI1 "expected non-zero exit for strict-jq failure; got 0"
+fi
+
+# FI2 — security-sensitive-profile jq failure.
+SHIM=$(make_shim jq "CLAUDE_DIFF_BLOCK_LINES")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" --profile security-sensitive fi2 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI2 "$PDI" "$out" fi2
+else
+  bad FI2 "expected non-zero exit for security-sensitive jq failure; got 0"
+fi
+
+# FI3 — minimal-profile jq failure.
+SHIM=$(make_shim jq "protect-files")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" --profile minimal fi3 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI3 "$PDI" "$out" fi3
+else
+  bad FI3 "expected non-zero exit for minimal jq failure; got 0"
+fi
+
+# FI4 — team-profile sed failure (only path where sed is called in phase 2).
+SHIM=$(make_shim sed "disable-model-invocation")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" --profile team fi4 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI4 "$PDI" "$out" fi4
+else
+  bad FI4 "expected non-zero exit for team sed failure; got 0"
+fi
+
+# FI5 — manifest sha256sum failure (P1 external review reproduction).
+SHIM=$(make_shim sha256sum "")   # sha256sum is only used in phase 2 manifest gen
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi5 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI5 "$PDI" "$out" fi5
+else
+  bad FI5 "expected non-zero exit for manifest sha256sum failure; got 0"
+fi
+
+# FI6 — manifest find failure (find is used with -type f for the manifest).
+SHIM=$(make_shim find "-type f")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi6 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI6 "$PDI" "$out" fi6
+else
+  bad FI6 "expected non-zero exit for manifest find failure; got 0"
+fi
+
+# FI7 — final publish mv failure. mv is used for two purposes: profile
+# transforms (settings.json.new -> settings.json) and the FINAL publish
+# (tmp -> dest). The shim exits 77 only when neither .new nor settings.json
+# appears in the argv — i.e., the final publish.
+SHIM=$(mktemp -d "$SCRATCH/shim-mv-XXXX")
+REAL_MV="$(command -v mv)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally — $args/$@ expand when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'args="$*"\n'
+  # shellcheck disable=SC2016
+  printf 'case "$args" in *.new*|*settings.json*) exec %q "$@" ;; esac\n' "$REAL_MV"
+  printf 'exit 77\n'
+} > "$SHIM/mv"
+chmod +x "$SHIM/mv"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi7 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI7 "$PDI" "$out" fi7
+else
+  bad FI7 "expected non-zero exit for final mv failure; got 0"
+fi
+
+# FI8 — drift report must NOT validate a manifest with blank hashes
+# (compounding harm: sha256sum broken later gives all "" == "" comparisons).
+# Set up a valid manifest-generated project, then poison the manifest to
+# blank-hash rows and confirm claude-template-status flags it, not silently
+# reports "unchanged".
+PDG="$SCRATCH/pfg"
+ci "$PDG" "$TPL" fi8 >/dev/null 2>&1
+if [[ -f "$PDG/fi8/.claude/.template-manifest" ]]; then
+  # Blank every hash on the left side of the two-space separator.
+  # Use awk (not sed) to be portable across BSD/GNU sed on Windows Git Bash.
+  awk 'BEGIN{FS="  "; OFS="  "} { $1=""; print }' \
+    "$PDG/fi8/.claude/.template-manifest" > "$PDG/fi8/.claude/.template-manifest.new" \
+    && mv "$PDG/fi8/.claude/.template-manifest.new" "$PDG/fi8/.claude/.template-manifest"
+  status_out=$(cd "$PDG/fi8" && source "$REPO/claude-init.sh" && claude-template-status 2>&1)
+  # Success = the drift report REFUSES to validate: it should not report
+  # "unchanged=53" (or any positive unchanged count) for a poisoned manifest.
+  if grep -qE 'unchanged=[1-9]' <<<"$status_out" && ! grep -q 'blank\|invalid\|poison' <<<"$status_out"; then
+    bad FI8 "drift report validates blank-hash manifest: $(head -c 200 <<<"$status_out" | tr '\n' ' ')"
+  else
+    ok FI8 "drift report refuses to validate blank-hash manifest"
+  fi
+else
+  bad FI8 "prep failed: no manifest to poison"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1
