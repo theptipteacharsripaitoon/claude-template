@@ -62,18 +62,45 @@ fi
 # Customize commands per project. These are conservative defaults that try
 # common conventions; missing commands are skipped silently.
 
+# Per-check wall-clock budget (v8). A blocking-mode Stop hook with no timeout
+# hangs forever if a project's test script enters watch mode (`vitest --watch`,
+# `jest --watch`, `next dev`, nodemon). We detect obvious watchers up front
+# (script_is_watch) and, as a backstop, bound every check with `timeout` so a
+# non-obvious long-runner cannot wedge the session. Distinguish three outcomes:
+# pass (0), timeout (124 → treated as a failure here, in blocking mode), and a
+# real non-zero failure.
+VERIFY_TIMEOUT_S=${CLAUDE_VERIFY_TIMEOUT_S:-300}
+
 run_check() {
   # Executes the remaining args DIRECTLY as an argument vector — never eval
   # (CLAUDE.md §7: no eval, even on internally-built strings; word-splitting
   # surprises are a maintenance hazard the vector form cannot have).
   local name="$1"; shift
-  if "$@" >/dev/null 2>&1; then
+  local rc=0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${VERIFY_TIMEOUT_S}s" "$@" >/dev/null 2>&1 || rc=$?
+  else
+    "$@" >/dev/null 2>&1 || rc=$?
+  fi
+  if (( rc == 0 )); then
     echo "   ✓ $name" >&2
     return 0
+  elif (( rc == 124 )); then
+    echo "   ✗ $name TIMED OUT after ${VERIFY_TIMEOUT_S}s — likely a watch/serve script; run '$*' manually or set CLAUDE_VERIFY_TIMEOUT_S" >&2
+    return 1
   else
     echo "   ✗ $name FAILED — run '$*' to see details" >&2
     return 1
   fi
+}
+
+# True when a package.json script starts a long-running watcher/server that
+# never exits. Such a script must be SKIPPED (with a note), not run — running
+# it would burn the whole timeout budget and then report a misleading failure.
+script_is_watch() {
+  local key="$1" body
+  body=$(jq -r --arg k "$key" '.scripts[$k] // ""' package.json 2>/dev/null)
+  printf '%s' "$body" | grep -qE -- '(--watch|--watchAll|--serve|(^| )-w( |$)|nodemon|(^| )watch( |$)|next[[:space:]]+dev|vite([[:space:]]|$))'
 }
 
 echo "🔍 Running Definition of Done verification..." >&2
@@ -105,17 +132,29 @@ if [[ -f package.json ]]; then
     echo "   ⚠ package.json present but '$PM' is not installed — Node checks skipped" >&2
   else
     if jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "typecheck" "$PM" run typecheck || FAILED=$((FAILED+1))
+      if script_is_watch typecheck; then
+        echo "   ⚠ 'typecheck' script looks like watch/serve mode — skipped (would not exit); run it manually" >&2
+      else
+        RAN=$((RAN+1)); run_check "typecheck" "$PM" run typecheck || FAILED=$((FAILED+1))
+      fi
     fi
     if jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-      RAN=$((RAN+1)); run_check "lint" "$PM" run lint || FAILED=$((FAILED+1))
+      if script_is_watch lint; then
+        echo "   ⚠ 'lint' script looks like watch/serve mode — skipped (would not exit); run it manually" >&2
+      else
+        RAN=$((RAN+1)); run_check "lint" "$PM" run lint || FAILED=$((FAILED+1))
+      fi
     fi
     if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
-      # `run test`, never bare `test`: identical for npm/pnpm/yarn, and for Bun
-      # it is the only correct form — `bun test` invokes Bun's NATIVE runner,
-      # which ignores the package.json script this check is gated on (on a
-      # script-only project real Bun exits 1 "No tests found").
-      RAN=$((RAN+1)); run_check "test" "$PM" run test || FAILED=$((FAILED+1))
+      if script_is_watch test; then
+        echo "   ⚠ 'test' script looks like watch mode — skipped (would not exit); run it manually" >&2
+      else
+        # `run test`, never bare `test`: identical for npm/pnpm/yarn, and for Bun
+        # it is the only correct form — `bun test` invokes Bun's NATIVE runner,
+        # which ignores the package.json script this check is gated on (on a
+        # script-only project real Bun exits 1 "No tests found").
+        RAN=$((RAN+1)); run_check "test" "$PM" run test || FAILED=$((FAILED+1))
+      fi
     fi
   fi
 fi

@@ -89,13 +89,29 @@ check_override() {
   return 1  # no override — caller should enforce
 }
 
+# --- Fail-open observability -------------------------------------------------
+# Hooks deliberately fail OPEN (allow) when jq is missing or the hook input is
+# not valid JSON — failing closed would break every tool call on a
+# misconfigured machine. But a silent fail-open is an invisible bypass: before
+# v8 nothing was recorded, so an operator reviewing hooks.log could not tell a
+# guardrail had been skipped. log_fail_open makes the bypass auditable WITHOUT
+# ever writing the payload or any field value (which could carry a secret) —
+# only the hook name and the reason category.
+log_fail_open() {
+  local reason="$1"   # short category: "jq-missing" | "malformed-input"
+  echo "⚠️  Guardrail skipped (fail-open): $reason. This is logged; the action was allowed unverified." >&2
+  log_event "FAIL_OPEN" "$reason" "hook allowed the action without inspection (payload withheld)"
+}
+
 # --- JSON helpers ------------------------------------------------------------
 
 require_jq() {
   if ! command -v jq >/dev/null 2>&1; then
     echo "Hook misconfiguration: jq not installed. Install with 'brew install jq' / 'apt-get install jq'." >&2
     # Exit 0 (allow) on misconfig — fail open is safer than fail closed for hooks.
-    # The user will see the message and can fix it.
+    # The user will see the message and can fix it. Record the bypass first so
+    # it is not silent (log_event no-ops safely if the log dir is unwritable).
+    log_fail_open "jq-missing"
     exit 0
   fi
 }
@@ -109,8 +125,21 @@ read_input() {
 # valid JSON. Guardrail hooks must fail OPEN on malformed input (same policy
 # as require_jq) — without the guard, jq's parse error aborts the sourcing
 # hook via set -euo pipefail with a confusing non-0/non-2 exit code.
+# A malformed-input fail-open is recorded ONCE per process (guarded by
+# _FAIL_OPEN_LOGGED) so a hook that reads several fields does not spam the log,
+# and the payload is never written.
 json_get() {
   local input="$1"
   local field="$2"
+  # Detect unparseable input explicitly so the bypass is observable. `jq empty`
+  # exits non-zero on malformed JSON; on valid JSON it is a cheap no-op.
+  if [[ -n "$input" ]] && ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+    if [[ -z "${_FAIL_OPEN_LOGGED:-}" ]]; then
+      _FAIL_OPEN_LOGGED=1
+      log_fail_open "malformed-input"
+    fi
+    printf '%s' ""   # fail open: behave as if the field were absent
+    return 0
+  fi
   echo "$input" | jq -r "$field // empty" 2>/dev/null || true
 }

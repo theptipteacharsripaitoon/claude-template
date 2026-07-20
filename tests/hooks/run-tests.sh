@@ -202,15 +202,19 @@ got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRAT
 if [[ "$got" == 0 ]] && ! grep -q 'checks passed' "$SCRATCH/vd5.txt" && grep -qi 'no verification' "$SCRATCH/vd5.txt"; then PASS=$((PASS+1)); echo "PASS VD5    no checks discovered -> not reported as passed"; else FAIL=$((FAIL+1)); echo "FAIL VD5    want exit 0 + 'no verification' (not 'checks passed'); got exit $got"; fi
 # VD6: blocking mode with a real PASSING checker must run it and exit 0.
 # (Regression: bare ((RAN++)) under set -e aborted the hook before any check.)
+# Script is `node -e process.exit(0)`, NOT `exit 0`: v8 portability — a bare
+# `exit 0` npm script runs through cmd.exe on default Windows npm and fails,
+# so 289/291 vs 291/291 depended on the host's npm script-shell. node is
+# cross-platform and always available where npm is.
 mkdir -p "$SCRATCH/nodeok" && ( cd "$SCRATCH/nodeok" && git init -q . \
-  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"exit 0"}}\n' > package.json \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"node -e \\"process.exit(0)\\""}}\n' > package.json \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nodeok" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd6.txt" || got=$?
 if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vd6.txt"; then PASS=$((PASS+1)); echo "PASS VD6    blocking + passing checker -> ran, exit 0"; else FAIL=$((FAIL+1)); echo "FAIL VD6    want exit 0 + 'check(s) passed'; got exit $got: $(head -c 120 "$SCRATCH/vd6.txt" | tr -d '\n')"; fi
 # VD7: blocking mode with a real FAILING checker must report it and exit 2.
 mkdir -p "$SCRATCH/nodebad" && ( cd "$SCRATCH/nodebad" && git init -q . \
-  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"exit 1"}}\n' > package.json \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"node -e \\"process.exit(1)\\""}}\n' > package.json \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nodebad" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd7.txt" || got=$?
@@ -219,7 +223,7 @@ if [[ "$got" == 2 ]] && grep -q 'Definition of Done unmet' "$SCRATCH/vd7.txt"; t
 mkdir -p "$SCRATCH/stubbin"
 printf '#!/bin/sh\nexit 0\n' > "$SCRATCH/stubbin/cargo" && chmod +x "$SCRATCH/stubbin/cargo"
 mkdir -p "$SCRATCH/polyglot" && ( cd "$SCRATCH/polyglot" && git init -q . \
-  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"exit 0"}}\n' > package.json \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"node -e \\"process.exit(0)\\""}}\n' > package.json \
   && printf '[package]\nname = "x"\nversion = "0.1.0"\n' > Cargo.toml \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
@@ -265,11 +269,52 @@ got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$BUNSTUB:$RBIN" "CLA
 if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vd12.txt" && grep -qx 'bun run test' "$SCRATCH/bun-argv.txt"; then PASS=$((PASS+1)); echo "PASS VD12   bun.lock (text) selects bun and runs the package script"; else FAIL=$((FAIL+1)); echo "FAIL VD12   want bun selected + 'bun run test' argv; got exit $got: $(head -c 100 "$SCRATCH/vd12.txt" | tr -d '\n') argv: $(tr '\n' ';' < "$SCRATCH/bun-argv.txt")"; fi
 # VD10: multiple failing checks are all counted.
 mkdir -p "$SCRATCH/nodebad2" && ( cd "$SCRATCH/nodebad2" && git init -q . \
-  && printf '{"name":"x","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}\n' > package.json \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"lint":"node -e \\"process.exit(1)\\"","test":"node -e \\"process.exit(1)\\""}}\n' > package.json \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nodebad2" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd10.txt" || got=$?
 if [[ "$got" == 2 ]] && grep -q '2 of 2' "$SCRATCH/vd10.txt"; then PASS=$((PASS+1)); echo "PASS VD10   both failing checks counted (2 of 2), exit 2"; else FAIL=$((FAIL+1)); echo "FAIL VD10   want exit 2 + '2 of 2'; got exit $got: $(head -c 120 "$SCRATCH/vd10.txt" | tr -d '\n')"; fi
+# VD13 (v8 A5): a watch-mode test SCRIPT must be SKIPPED, not run — otherwise
+# blocking Stop hangs until the timeout. Must finish fast, exit 0, say
+# "no verification" (nothing else ran), and NEVER invoke the package manager
+# for the watch script. A stub npm records any invocation so we can assert it
+# was not called; a real npm on PATH would also work but the stub makes the
+# "skipped, not run" guarantee deterministic on any host.
+NPMSTUB="$SCRATCH/npmstub"; mkdir -p "$NPMSTUB"
+printf '#!/bin/sh\necho "npm $*" >> "%s"\nexit 0\n' "$SCRATCH/npm-argv.txt" > "$NPMSTUB/npm"
+chmod +x "$NPMSTUB/npm"
+: > "$SCRATCH/npm-argv.txt"
+mkdir -p "$SCRATCH/nodewatch" && ( cd "$SCRATCH/nodewatch" && git init -q . \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"vitest --watch"}}\n' > package.json \
+  && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
+  && printf 'x=1\n' > a.py )
+vd13_start=$(date +%s); got=0
+printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$NPMSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodewatch" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd13.txt" || got=$?
+vd13_wall=$(( $(date +%s) - vd13_start ))
+if [[ "$got" == 0 ]] && grep -qi 'watch' "$SCRATCH/vd13.txt" && grep -qi 'no verification' "$SCRATCH/vd13.txt" \
+   && [[ ! -s "$SCRATCH/npm-argv.txt" ]] && (( vd13_wall < 30 )); then
+  PASS=$((PASS+1)); echo "PASS VD13   watch-mode script skipped (npm never invoked), honest 'no verification'"
+else
+  FAIL=$((FAIL+1)); echo "FAIL VD13   want fast exit 0 + 'watch' + 'no verification' + npm-not-called; got exit $got wall=${vd13_wall}s npm-argv='$(tr '\n' ';' < "$SCRATCH/npm-argv.txt")': $(head -c 120 "$SCRATCH/vd13.txt" | tr -d '\n')"
+fi
+# VD14 (v8 A5 backstop): a non-obvious long runner is bounded by
+# CLAUDE_VERIFY_TIMEOUT_S and reported as a timeout failure, not a hang.
+if command -v timeout >/dev/null 2>&1; then
+  mkdir -p "$SCRATCH/nodeslow" && ( cd "$SCRATCH/nodeslow" && git init -q . \
+    && printf '{"name":"x","version":"1.0.0","scripts":{"test":"sleep 60"}}\n' > package.json \
+    && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
+    && printf 'x=1\n' > a.py )
+  vd14_start=$(date +%s); got=0
+  printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nodeslow" CLAUDE_VERIFY_BLOCK=1 CLAUDE_VERIFY_TIMEOUT_S=3 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd14.txt" || got=$?
+  vd14_wall=$(( $(date +%s) - vd14_start ))
+  if [[ "$got" == 2 ]] && grep -qi 'timed out' "$SCRATCH/vd14.txt" && (( vd14_wall < 30 )); then
+    PASS=$((PASS+1)); echo "PASS VD14   slow check bounded by CLAUDE_VERIFY_TIMEOUT_S, reported as timeout"
+  else
+    FAIL=$((FAIL+1)); echo "FAIL VD14   want exit 2 + 'timed out' under budget; got exit $got wall=${vd14_wall}s: $(head -c 120 "$SCRATCH/vd14.txt" | tr -d '\n')"
+  fi
+else
+  echo "SKIP VD14   'timeout' not available on this host — timeout backstop unverified here"
+fi
 
 echo "== install.sh: counter must survive set -e =="
 if grep -q '((FAIL++))' "$HOOKS/install.sh"; then FAIL=$((FAIL+1)); echo "FAIL INST1  install.sh still uses ((FAIL++)) — dies under set -e on first failing test"; else PASS=$((PASS+1)); echo "PASS INST1  no set -e-fatal increments"; fi
@@ -618,6 +663,16 @@ echo "== block-destructive: v6 named relative cleanup stays allowed =="
 t BD89 0 block-destructive.sh "$(cmd 'rm -rf ./build')"
 t BD90 0 block-destructive.sh "$(cmd 'rm -rf ../temporary-build')"
 t BD91 0 block-destructive.sh "$(cmd 'rm -rf ./dist')"
+echo "== block-destructive: v8 multiline bypass closed (A1) =="
+# The command string carries a REAL newline; jq -Rs in cmd() encodes it as \n.
+t BD_ML1 2 block-destructive.sh "$(cmd "$(printf 'rm -rf \\\n/')")"    # backslash line-continuation
+t BD_ML2 2 block-destructive.sh "$(cmd "$(printf 'rm -rf\n/')")"       # bare LF, no space
+t BD_ML3 2 block-destructive.sh "$(cmd "$(printf 'rm -rf \n/')")"      # bare LF, trailing space
+t BD_ML4 2 block-destructive.sh "$(cmd "$(printf 'rm -r\n-f /')")"     # LF inside flag cluster
+t BD_ML5 2 block-destructive.sh "$(cmd "$(printf 'echo hi\nrm -rf /')")" # dangerous rm on a later line
+echo "== block-destructive: v8 harmless multiline still allowed =="
+t BD_ML6 0 block-destructive.sh "$(cmd "$(printf 'ls -la\nsrc/')")"    # harmless listing
+t BD_ML7 0 block-destructive.sh "$(cmd "$(printf 'rm -rf ./build\nnpm run build')")" # named cleanup then cmd
 echo "== block-destructive: v6 client-wrapped unguarded DELETE without ';' =="
 t BD92 2 block-destructive.sh "$(cmd 'psql -c "DELETE FROM users"')"
 t BD93 2 block-destructive.sh "$(cmd "psql -c 'DELETE FROM users'")"
@@ -753,6 +808,32 @@ t_noask V702g block-destructive.sh "$(cmd 'npm install')"
 t_noask V702h block-destructive.sh "$(cmd 'pip install -r requirements.txt')"
 t_noask V702i block-destructive.sh "$(cmd 'pip install -q -r requirements.txt')"
 t_noask V702j block-destructive.sh "$(cmd 'uv sync')"
+
+echo "== v8 A4: malformed input fails OPEN but is now OBSERVABLE (logged) =="
+# A guardrail hook given unparseable input still allows (exit 0) — failing
+# closed would break every tool call on a misconfigured host — but the bypass
+# must be recorded so it is not silent. FO1: exit 0. FO2: a FAIL_OPEN row is
+# appended to hooks.log naming the hook, with NO payload/field value.
+: > "$SCRATCH/logs/hooks.log" 2>/dev/null || { mkdir -p "$SCRATCH/logs"; : > "$SCRATCH/logs/hooks.log"; }
+mkdir -p "$SCRATCH/.claude/logs"; : > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' 'THIS IS NOT JSON' | bash "$HOOKS/block-destructive.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); printf 'PASS %-6s malformed input still fails open (exit 0)\n' FO1
+else FAIL=$((FAIL+1)); printf 'FAIL %-6s malformed input should fail open; got exit %s\n' FO1 "$got"; fi
+if grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
+   && ! grep -qi 'THIS IS NOT JSON' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s fail-open logged without leaking the payload\n' FO2
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s expected a FAIL_OPEN row and no payload in the log\n' FO2
+fi
+# FO3: valid JSON must NOT trigger a fail-open (the empty-object smoke input
+# used by install.sh must stay silent).
+: > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' '{"tool_input":{}}' | bash "$HOOKS/block-destructive.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]] && ! grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s valid empty JSON does not trip fail-open\n' FO3
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s valid JSON should not log FAIL_OPEN (exit %s)\n' FO3 "$got"
+fi
 
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
