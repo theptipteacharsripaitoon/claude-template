@@ -81,6 +81,20 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 - **tests/sessions/run-sessions.sh**: ten-scenario realistic-session harness
   recording skills loaded, hook ask/deny counts, replayed Stop decision,
   wall-clock, and artifact outcome — sanitized to names and counts.
+- **Authoritative full-fixture routing run** (`results/routing-20260720-083339`,
+  claude-sonnet-5, repo `05bfb3d`): 45 cases × 3 reps = 135 runs, 0 errored —
+  recall 0.940, precision 0.967, conflict rate 0.007, no-load 0.060, stability
+  0.733 (0.805 over the 41 asserting cases); skill-averaged macro recall
+  0.9505 / precision 0.9788 across all 37 skills. Sole conflict:
+  `review-api-breaking` run 1 co-loaded `api-design`; 7 isolated no-loads,
+  never a mis-load.
+- **Realistic-session evidence** (`tests/sessions/results/sessions-20260720.jsonl`):
+  9 model-driven scenarios — 0 asks, 0 denials, 0 unrequested skill loads,
+  8/9 produced the expected artifact (s4: alembic binary absent in the seed;
+  the session reported inability), Stop replay correct in every row. The
+  harness's evidence capture was corrected on first live contact (hooks.log
+  is tab-separated; bracketed-marker greps counted 0) and now also records
+  per-session tool-call counts so hook overhead is estimable.
 - 66 new hook regressions (V7-01…09 families plus intended-allow controls).
 
 ### Fixed (sixth cycle)

@@ -344,3 +344,21 @@ raw transcripts are not, and hook logs are filtered to event type + hook name.
   WSL is declared unmeasured rather than estimated.
 - **The listing-overflow finding (V7-19) is an inference**, not an observation,
   until someone runs `/doctor`.
+
+---
+
+## 12. Plan vs. delivered (appended 2026-07-20)
+
+| Plan section | Delivered | Deviation |
+|---|---|---|
+| §1 bounded guarantee | hooks README Limitations rewritten as the falsifiable contract | none |
+| §2 thresholds | Final corpus: 0 contract violations, recall 1.000, non-deny 1.000, false-deny 0.000; hot-path p95 270 ms ≤ 600 gate | corpus `--gate` NOT added to CI — workflow edits need owner approval (CLAUDE.md §2); gate runs locally |
+| §3 routing plan | 45-case fixture, all 37 positive, 3 reps, provenance incl. description digest | none — gates met (0.940 / 0.967 / 0.007) |
+| §4 context budget | Part 1: listing 20,229 → 13,415 chars. Part 2: `CLAUDE.md` untouched | Part 1 target ≤10,000 missed (−34% achieved); Part 2 deliberately deferred — going further requires another full live routing run (the §4 guard); accepted under §11 |
+| §5 manual-only | `team` profile makes repository-cleanup + release-readiness manual-only | shipped as opt-in profile rather than default trial; default profile unchanged |
+| §6 profiles | 5 profiles + dry-run + safety-reduction warnings | none |
+| §7 update propagation | stamp + manifest + drift states + never-overwrite | three-way merge out of scope, as planned |
+| §8 sessions | 9 model scenarios run; 0 false asks, 0 false blocks, 0 unrequested loads; overhead 3.8% aggregate | per-session ≤5% budget exceeded on the 4 shortest sessions (max 7.2%) — calibration finding: fixed ~1.5 s edit+Stop chain vs 24–36 s sessions; recommend an absolute floor ("≤5% or ≤2.5 s") |
+| §9 release gates | LICENSE / CONTRIBUTING / SECURITY / SUPPORT shipped; tag + scanner untouched | none |
+| §10 owner decisions | consolidated in `proposal-owner-decisions-v7.md` | none |
+| §11 honest scope | 9.0 evidence completed this cycle; 9.5 items remain owner-gated | — |
