@@ -62,6 +62,25 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 - **hooks README**: "Bounded guarantee" section — five falsifiable statements
   covering recursive deletion, protected-branch commits, SQL, strict Stop
   (best-effort, not a hard DoD gate), and the universal regex limit.
+- **LICENSE**: Apache-2.0, verbatim official text (owner-authorized); README
+  license section; CONTRIBUTING.md, SECURITY.md, SUPPORT.md added.
+- **claude-init profiles + dry-run**: `--profile minimal|standard|strict|team|
+  security-sensitive` as jq transforms of the staged settings.json; `--dry-run`
+  reports the full plan and writes nothing; allowlist copy replaces
+  copy-everything-then-prune (95% of previously copied bytes were machine-local
+  worktrees) and fails loudly on unknown `.claude/` entries.
+- **Update propagation (detect-and-report tier)**: `.claude/.template-version`
+  + `.claude/.template-manifest` (sha256 per managed file) stamped into every
+  generated project; `claude-template-status` classifies unchanged / locally
+  modified / missing and never writes. `tests/installer/run-tests.sh`: 37 cases.
+- **Routing evaluation at full coverage**: fixture extended 20 → 45 cases so
+  all 37 skills have positive evidence plus ambiguous-observation rows; skill
+  descriptions compressed to routing signals (listing 20,229 → 13,415 chars)
+  with the six missing Do-NOT boundaries added; results carry provenance
+  (repo commit, fixture digest, descriptions digest, model, CC version).
+- **tests/sessions/run-sessions.sh**: ten-scenario realistic-session harness
+  recording skills loaded, hook ask/deny counts, replayed Stop decision,
+  wall-clock, and artifact outcome — sanitized to names and counts.
 - 66 new hook regressions (V7-01…09 families plus intended-allow controls).
 
 ### Fixed (sixth cycle)
