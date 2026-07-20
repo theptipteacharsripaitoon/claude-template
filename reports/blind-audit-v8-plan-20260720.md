@@ -6,7 +6,7 @@ Two source documents were supplied by the user:
 1. `claude-template-v7-independent-review.md` — external independent review (7.98 → 8.0/10).
 2. `claude-template-v8-additional-session-context.md` — secondary evidence with reported A1–A5 items.
 
-An earlier read-only blind audit I completed on the same commit is preserved at [reports/blind-audit-20260720.md](reports/blind-audit-20260720.md); it did **not** run the failure injections and did not open either external file, so its 9.25 score is superseded by this document wherever the two disagree.
+An earlier read-only blind audit I completed on the same commit is preserved at [reports/blind-audit-20260720.md](blind-audit-20260720.md); it did **not** run the failure injections and did not open either external file, so its 9.25 score is superseded by this document wherever the two disagree.
 
 ---
 
@@ -430,4 +430,4 @@ Owner-gated items (repo settings, release tag, historical-report archive policy,
 
 ---
 
-*Investigation and reproductions performed by the same session that produced [reports/blind-audit-20260720.md](reports/blind-audit-20260720.md). Two source documents (`claude-template-v7-independent-review.md`, `claude-template-v8-additional-session-context.md`) were treated as evidence to reproduce, not as findings to inherit. Every reproduction referenced above is bit-reproducible from a clean clone with the fixtures and shims described.*
+*Investigation and reproductions performed by the same session that produced [reports/blind-audit-20260720.md](blind-audit-20260720.md). Two source documents (`claude-template-v7-independent-review.md`, `claude-template-v8-additional-session-context.md`) were treated as evidence to reproduce, not as findings to inherit. Every reproduction referenced above is bit-reproducible from a clean clone with the fixtures and shims described.*
