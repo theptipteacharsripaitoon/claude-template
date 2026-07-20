@@ -19,7 +19,7 @@ Extends `CLAUDE.md §7` (Security Foundations). The universal rules (no committe
 ### Passwords
 - **Hash with Argon2id** (preferred) or bcrypt (cost ≥12). Never MD5, SHA-*, or PBKDF2-SHA1.
 - Argon2id parameters (2026 recommended starting points): memory 64 MB, iterations 3, parallelism 4. Tune to ~250ms on your hardware.
-- Reject passwords <12 chars; check against breach lists (`HaveIBeenPwned` k-anonymity API).
+- Minimum length depends on factor context (state your threat model): per NIST SP 800-63B rev 4 (2024), require **≥15 chars** for a password used as a single/primary factor, and **≥8** is acceptable only when it is one factor inside enforced MFA. Check against breach lists (`HaveIBeenPwned` k-anonymity API) regardless.
 - Never enforce composition rules ("must contain symbol") — they reduce entropy. Check breach lists instead.
 - Do not impose a maximum length below 64. Allow 100+ characters.
 - Never email passwords. Never log passwords, even on error.
@@ -151,8 +151,10 @@ Any endpoint that redirects to a URL from user input is a phishing weapon.
 
 ## Logging (security-sensitive paths)
 
-- Never log: passwords, full tokens, full credit card numbers, full SSNs, full request/response bodies for auth/payment endpoints.
-- **Mask in logs:** show last 4 digits, show token prefix only.
+- Never log any part of a session token, bearer token, API key, refresh token, or `Authorization` header — not the full value, not a prefix, not a suffix, not a hash derived from the raw value. CLAUDE.md §7 is absolute here; a "prefix only" carve-out was a real defect that let partial credentials leak into logs.
+- To correlate log lines to a session without leaking the token: use a **server-side correlation identifier** — a random session record ID, request ID, or `sub`-hash from the ID token — that has no value to an attacker who steals the log.
+- Never log: passwords, full credit card numbers, full SSNs, full request/response bodies for auth/payment endpoints.
+- **Mask user PII where a truncated form is useful and non-authenticating**, e.g. show last-4 of a payment card or the local-part of an email in an operator UI — never the same treatment for authenticating secrets.
 - **Audit log** sensitive actions (login, password change, role change, money movement). Audit logs are append-only.
 
 ## Common patterns (copy-paste safe defaults)

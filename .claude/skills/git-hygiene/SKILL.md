@@ -32,7 +32,7 @@ File moves and cleanup churn destroy history and reviewability when done careles
 
 - **Clean-tree gate.** Never start restructuring on a dirty tree: STOP, create no branches, ask the user to commit or stash, wait.
 - **Dedicated branch.** All restructuring happens on a work branch created from a clean tree — never on main. The branch name comes from the governing workflow (a cleanup run names it in its Phase 0) or from `CLAUDE.md` §11.
-- **`git mv` whenever possible.** Never move tracked files with plain filesystem operations when `git mv` is available — history and rename detection depend on it.
+- **Prefer `git mv`.** Git tracks content, not moves, and detects renames heuristically at diff/log time (`--follow`, `-M`) regardless of how a file moved — so history is not strictly *dependent* on `git mv`. Prefer it anyway: it stages the delete+add in one step and keeps the intent obvious in `git status`/review, which a bare `mv` + separate `git add` can obscure.
 - **Move first. Rename later.** Never combine a move and a rename in one step; each is its own reviewable change.
 - **One logical change per commit.** A reviewer must be able to state each commit's purpose in one sentence.
 - **Verify after every commit** per [verification](../verification/SKILL.md).

@@ -111,7 +111,7 @@ Three distinct checks, three distinct meanings:
 - **Readiness:** is the process ready to serve traffic? Reflects dependency status (DB connection, cache warmed, config loaded).
 - **Startup** (Kubernetes): for slow-starting apps that need a long grace period.
 
-A health check that always returns 200 is worse than no health check — it gives false confidence. The readiness check **must** verify it can talk to its critical dependencies. (Canonical rule — the docker and kubernetes skills point here.)
+A health check that always returns 200 is worse than no health check — it gives false confidence. A readiness check **should** reflect whether this replica can serve — which usually means checking the dependencies it cannot function without. **Beware amplification:** if every replica shares one dependency, a dependency blip that flips all readiness probes at once can pull the whole service out of rotation and turn a partial degradation into a full outage. When a dependency is shared (not per-replica), prefer a circuit breaker / cached-status check over a live probe on every readiness call, or degrade gracefully instead of reporting unready. (The docker and kubernetes skills point here for the mechanics.)
 
 ## Alerts
 
@@ -125,8 +125,8 @@ Alert on **error budget burn rate**, not raw thresholds:
 This pages on real user pain, not cosmetic spikes.
 
 ### What NOT to alert on
-- CPU usage. (It's a saturation indicator, not user pain.)
-- Container restarts. (One restart isn't an outage; pattern of restarts is.)
+- Raw CPU usage as a proxy for user pain — page on SLO burn instead. Sustained CPU **saturation** (e.g. ≥90% for 15+ min, or run-queue depth) IS worth a ticket/alert when tied to a capacity SLO: it precedes latency collapse. The rule is "don't page on a cosmetic CPU spike," not "never alert on CPU."
+- Container restarts. (One restart isn't an outage; a pattern of restarts is.)
 - Individual deploys, log lines, or low-level events.
 - Anything you wouldn't want to be woken at 3 AM for.
 
