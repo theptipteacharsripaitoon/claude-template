@@ -37,8 +37,11 @@ run_scenario() {
   tmp=$(mktemp -d) || return 1
   proj="$tmp/repo"
   bash "$SEED" "$seedcase" "$proj" >/dev/null 2>&1 || { echo "seed failed: $id" >&2; rm -rf "$tmp"; return 1; }
+  # seed-repo.sh already inits and commits the seed; this block only covers a
+  # seed shape that did not. `commit -q` still prints "nothing to commit" on
+  # stdout in that (normal) case — silence stdout, keep stderr for real errors.
   ( cd "$proj" && git init -q . && git add -A >/dev/null 2>&1 \
-      && git -c user.email=s@s -c user.name=s commit -qm seed ) || true
+      && git -c user.email=s@s -c user.name=s commit -qm seed >/dev/null ) || true
 
   local start end wall stream
   stream="$tmp/stream.jsonl"
@@ -57,11 +60,26 @@ run_scenario() {
            "$stream" 2>/dev/null | sort -u | jq -R . | jq -sc .)
   [[ -z "$skills" ]] && skills="[]"
 
+  # Tool-call counts (names only, nothing else): hooks.log records only
+  # non-allow decisions, so allowed calls — the common case — are invisible
+  # to it. These counts are what lets the report estimate hook overhead
+  # (calls x measured per-hook latency) against the plan §8 wall-clock budget.
+  local bash_calls edit_calls
+  bash_calls=$(jq -r 'select(.type=="assistant") | .message.content[]?
+                      | select(.type=="tool_use" and .name=="Bash") | .name' \
+               "$stream" 2>/dev/null | awk 'END{print NR}')
+  edit_calls=$(jq -r 'select(.type=="assistant") | .message.content[]?
+                      | select(.type=="tool_use" and (.name=="Write" or .name=="Edit" or .name=="NotebookEdit")) | .name' \
+               "$stream" 2>/dev/null | awk 'END{print NR}')
+
   # Hook evidence: event counts by type from the seeded repo's own log.
+  # hooks.log is tab-separated — ts<TAB>KIND<TAB>hook<TAB>category<TAB>detail
+  # (lib.sh log_event); KIND is a bare word (ASK/BLOCK/WARN/OVERRIDE), never
+  # bracketed, so the field must be matched exactly, not grepped as [ASK].
   local log="$proj/.claude/logs/hooks.log" asks=0 denies=0
   if [[ -f "$log" ]]; then
-    asks=$(grep -c '\[ASK\]' "$log" 2>/dev/null || true)
-    denies=$(grep -c '\[BLOCK\]' "$log" 2>/dev/null || true)
+    asks=$(awk -F'\t' '$2=="ASK"{n++} END{print n+0}' "$log")
+    denies=$(awk -F'\t' '$2=="BLOCK"{n++} END{print n+0}' "$log")
   fi
 
   # Stop decision replayed against the final tree (reminder mode).
@@ -82,10 +100,12 @@ run_scenario() {
   jq -cn \
     --arg id "$id" --arg seed "$seedcase" --argjson skills "$skills" \
     --argjson asks "${asks:-0}" --argjson denies "${denies:-0}" \
+    --argjson bash_calls "${bash_calls:-0}" --argjson edit_calls "${edit_calls:-0}" \
     --arg stop "$stop_kind" --argjson wall "$wall" --argjson rc "$rc" \
     --arg outcome "$outcome" --argjson files_changed "${changed:-0}" \
     '{scenario:$id, seed:$seed, skills_loaded:$skills, approvals_requested:$asks,
-      hook_denials:$denies, stop_on_end_state:$stop, wall_s:$wall,
+      hook_denials:$denies, bash_calls:$bash_calls, edit_calls:$edit_calls,
+      stop_on_end_state:$stop, wall_s:$wall,
       claude_exit:$rc, outcome:$outcome, files_changed:$files_changed}' \
     | tee -a "$OUT/sessions.jsonl"
   rm -rf "$tmp"
