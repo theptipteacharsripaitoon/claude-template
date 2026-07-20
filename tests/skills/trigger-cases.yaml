@@ -268,3 +268,13 @@ evaluated_runs:
     results_file: results/routing-20260718-195349.jsonl
     metrics: {recall: 0.963, precision: 1.0, conflict_rate: 0.0, no_load_rate: 0.037, stability: 0.9}
     note: "60 runs, 0 errored; only misses are two isolated no-loads (review-api-breaking run2, dag-add-retry run2 — nothing loaded, never a mis-load)"
+  - date: 2026-07-20
+    cc_version: 2.1.215
+    cc_version_note: "hand-entered from the session CLI (claude --version); per-row stream capture recorded null on this CLI build. 21 of 45 cases were parked by the prior session on the same machine a day earlier; their exact CLI build (2.1.214 vs 2.1.215) was not captured per-row."
+    model: claude-sonnet-5
+    runs_per_case: 3
+    cases: 45
+    kind: full-fixture live run (v7 cycle, authoritative — every skill positive + ambiguous cluster)
+    results_file: results/routing-20260720-083339.jsonl
+    metrics: {recall: 0.94, precision: 0.967, conflict_rate: 0.007, no_load_rate: 0.06, stability: 0.733}
+    note: "135 runs, 0 errored; 1 conflict run (review-api-breaking run1 co-loaded api-design beside api-review); 7 isolated no-load runs (3 in the airflow cluster, never a mis-load); stability 0.733 includes the 4 by-design-variable ambiguous cases — 0.805 over the 41 asserting cases; skill-averaged macro recall 0.9505 / precision 0.9788 across all 37 skills"
