@@ -513,4 +513,33 @@ attributable.
 | 4 | Global-tool-install policy (`pipx`, `uv tool`, `cargo install`) | **Open** — recommend ask |
 | 5 | Release version number / tag | **Open** — tagging out of scope this cycle |
 | 6 | Compatibility support window | **Open** — draft to be proposed |
+
+---
+
+## Post-implementation outcomes (appended 2026-07-20)
+
+The adjudication above is unchanged. Per-item outcome after Phases 4–10:
+
+| Item | Verdict then | Outcome now |
+|---|---|---|
+| A1 (V7-01) | Confirmed | Fixed — allowlist scoped to the `.env*` rule only; corpus PF rows green |
+| A2 (V7-05/06/07) | Confirmed | Fixed within the bounded guarantee (plan §1.1); destroyer forms deny, `rm -rf ./build` still allowed |
+| A3 (V7-08) | Confirmed, broader | Fixed for global options + path/env invocations; `-C <other>` non-resolution documented as the contract |
+| A4 (V7-03) | Confirmed | Fixed — long flags covered, prose boundary preserved |
+| A5 (V7-02/13/14) | Confirmed | Fixed + policy table; global tool installs ask (provisional; revert is one line) |
+| A6 (V7-15) | Confirmed as decision | Documented as best-effort contract; strict-on-zero-checks stays rejected |
+| A7 (V7-18) | Confirmed, quantified | Allowlist copy + fail-loud unknown-entry handling; installer suite 37/37 |
+| B1/B2 | Partly confirmed / Confirmed | 205-row corpus committed with schema + confusion matrix; final state 0 violations, recall 1.000, false-deny 0.000 |
+| B3 | Partly confirmed | Latency measured and fixed (p50 2179 → 259 ms); WSL stays declared unmeasured |
+| C1–C3 (V7-11/12) | Confirmed | Full-fixture live run: 45 × 3 = 135 runs — recall 0.940, precision 0.967, conflict 0.007; description digest in provenance |
+| D1–D4 (V7-17) | Confirmed | Descriptions → routing signals (listing −34%); manual-only shipped as `team`-profile opt-in; CLAUDE.md compaction deliberately deferred (routing re-run cost) |
+| D5 → V7-19 | Superseded | Two-part budget adopted; listing 13,415 chars vs ≤10,000 target — honest miss, remaining levers evidence-gated |
+| E | Confirmed | 9 model-driven sessions executed; 0 asks / 0 denies / 0 unrequested loads, 8/9 artifacts (audit §18.6) |
+| F | Confirmed | 5 profiles + dry-run implemented; installer suite 37/37 |
+| G | Confirmed | Version stamp + manifest + drift detection; never-overwrite tested |
+| H | Owner decisions | Unchanged — license resolved; scanner / tag / template setting still owner-gated |
+| I | Confirmed | LICENSE, CONTRIBUTING, SECURITY, SUPPORT shipped |
+
+Rejected items stay rejected; nothing in the implementation contradicted an
+adjudication verdict.
 | 7 | Confirm sole authorship of all four git identities | **Open** — inferred, not verified |

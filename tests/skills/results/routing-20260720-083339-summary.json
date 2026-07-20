@@ -1,0 +1,21 @@
+{
+  "date": "20260720-083339",
+  "cc_version": null,
+  "model": "claude-sonnet-5",
+  "runs_per_case": 3,
+  "results_file": "routing-20260720-083339.jsonl",
+  "repo_commit": "05bfb3d24bcdb6d4c2d323c847a0d93c5dce4a17",
+  "os": "win32",
+  "case_count": 45,
+  "fixture_digest": "83fe8e76a265cc06ad3e95ec21694cb7da836f41bd1e3dd6f02887de5ecf5017",
+  "descriptions_digest": "d714143ada85d06e476c332e71a3d7e735b6a830228e12bcef89403668b2ca16",
+  "merged_from_percase": true,
+  "runs_total": 135,
+  "runs_errored": 0,
+  "recall": 0.94,
+  "precision": 0.967,
+  "conflict_rate": 0.007,
+  "no_load_rate": 0.06,
+  "stability": 0.733,
+  "cases": 45
+}
