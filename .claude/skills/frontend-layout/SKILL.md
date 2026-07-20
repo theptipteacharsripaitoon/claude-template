@@ -34,7 +34,7 @@ Frontend code multiplies fast — components beget hooks beget utils. Without pl
 - **Colocate what changes together:** component + its test + its styles in one folder (`CLAUDE.md` §8 test co-location). A component folder: `order-table/` → `order-table.tsx`, `order-table.test.tsx`, styles.
 - **Components render; logic lives in hooks/utils.** Data fetching, transforms, and business rules belong in hooks or `api/` — a component with embedded fetch + transform + render is three files in one (§6 one-thing rule).
 - **Barrel files (`index.ts`) with care:** fine as a folder's public API; a finding when they create import cycles or re-export entire trees (breaks tree-shaking, hides dependencies). Never deep-import past another feature's barrel.
-- **API layer is the only fetch site.** Components never call `fetch`/`axios` directly — endpoint wrappers in `src/api/` own URLs, types, and error mapping (boundary rule: `CLAUDE.md` §7).
+- **Route data access through the API layer.** In client-side data-loading (React Query/SWR/raw hooks), components should not scatter `fetch`/`axios` calls — endpoint wrappers in `src/api/` own URLs, types, and error mapping (boundary rule: `CLAUDE.md` §7). Exception: framework server-data contexts fetch by design — React Server Components, Next.js `page.tsx`/route handlers, Remix `loader`s — keep that fetch in the loader/server entry (still typed and centralized), not pushed into leaf client components.
 - **Assets near their user:** component-specific assets in the component folder; app-wide assets in `src/assets/`. Generated bundles never committed (ignore list: git-hygiene).
 
 ## Cross-references

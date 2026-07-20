@@ -29,9 +29,9 @@ UI bugs live in the states nobody rendered during development: the empty list, t
 
 1. **The state matrix, rendered:** loading / empty / error / success / partial data. A screen shown only in its success state is unreviewed. Error states show actionable messages, never stack traces (`CLAUDE.md` §12).
 2. **Real-shaped data:** long names, zero rows, thousands of rows (does it paginate/virtualize?), missing optional fields — and for Thai products: Thai text (no inter-word spaces and taller stacked glyphs — line-box metrics differ from the English mock, so check truncation, wrapping, and clipping rather than assuming the mock's dimensions), Buddhist-calendar dates displayed as users expect.
-3. **Responsive breakpoints:** the change at mobile/tablet/desktop widths; horizontal scroll on mobile is a finding.
+3. **Responsive breakpoints:** the change at mobile/tablet/desktop widths; *unintended* horizontal scroll on mobile is a finding (the page body scrolling sideways). Intentionally scrollable elements — carousels, wide data grids/tables in their own `overflow-x` container, code blocks — are not, provided the scroll is contained and discoverable.
 4. **Accessibility basics:** interactive elements keyboard-reachable with visible focus; images/icons carry labels; form fields have real `<label>`s; color contrast readable; color never the only signal.
-5. **Destructive actions confirm:** delete/submit/pay flows show consequence + confirmation (mirrors `CLAUDE.md` §2 philosophy in the product).
+5. **Destructive or externally-visible actions confirm:** delete, pay, publish, send, and other hard-to-reverse flows show consequence + confirmation (mirrors `CLAUDE.md` §2 philosophy in the product). An ordinary, reversible save/submit does **not** need a confirmation step — over-confirming trains users to click through; reserve it for actions that lose data, spend money, or are visible to others.
 6. **Console clean:** no new errors/warnings in the browser console while walking the change.
 7. **Regression guard:** shared-component changes checked where they're REUSED, not just the screen in the PR (blast radius); visual-regression suite updated if one exists ([testing](../testing/SKILL.md)).
 

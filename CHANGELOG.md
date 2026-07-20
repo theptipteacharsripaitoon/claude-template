@@ -4,6 +4,73 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions are git tags.
 
 ## [Unreleased]
 
+### Fixed (eighth cycle)
+- **claude-init bootstrap (P1): now fails closed.** Profile application, version
+  stamp, manifest generation, manifest verification, and the final publish are
+  one checked transaction (`if ! ( … )` with explicit `|| exit 1` at every
+  step). Reproduced defects, now fixed: a broken `jq` during the strict/
+  security-sensitive transform previously published a project labelled `strict`
+  whose `settings.json` had **no** `CLAUDE_VERIFY_BLOCK` (exit 0 + success
+  line); a broken `sha256sum` published a manifest of **blank hashes** that then
+  validated against itself. The transform now asserts the intended env keys
+  actually landed, the manifest is generated via captured `sha256sum` (exit code
+  propagated), any blank-hash row aborts, and `sha256sum --check --quiet` must
+  pass before the atomic `mv`. New failure-injection tests (FI1–FI8) cover jq/
+  sed/find/sha256sum/mv failures + the drift-report guard.
+- **claude-template-status (P1 follow-on)**: refuses to validate a manifest that
+  contains blank-hash rows instead of reporting every file "unchanged"
+  (`"" == ""`) — the compounding harm of the sha256sum defect.
+- **web-security (P1): removed partial-token logging authorization.** "show
+  token prefix only" contradicted CLAUDE.md §7 ("never log … session tokens").
+  Now: never log any part of a token/auth header — use a non-secret correlation
+  id. Enforced by a new static gate, `tests/policy_consistency.py`.
+- **block-destructive (P2, A1): multiline recursive-`rm` bypass closed.** grep
+  matched line-by-line, so `rm -rf \<LF>/`, a bare `LF`/`CRLF` split, or
+  `rm -r<LF>-f /` all slipped through. The command is normalized (line
+  continuations + CR/LF → space) on a match-only copy before matching; corpus
+  rows ML-001–010 and hook cases BD_ML1–7 pin both the dangerous and the
+  harmless-multiline neighbors.
+- **hooks (P2, A4): fail-open is now observable.** When `jq` is missing or the
+  input is unparseable the hooks still allow (fail open) but now log a
+  `FAIL_OPEN` row (payload withheld) via `lib.sh::log_fail_open`, so a silent
+  guardrail bypass is auditable. Tests FO1–FO3.
+- **verify-done (P2, A5): watch-mode no longer hangs the Stop hook.** Watch/serve
+  test scripts (`--watch`, `next dev`, nodemon, `vite`, …) are detected and
+  skipped with an honest "no verification" note; every check is additionally
+  bounded by `CLAUDE_VERIFY_TIMEOUT_S` (default 300 s) so a non-obvious
+  long-runner is reported as a timeout failure, not a hang. Tests VD13/VD14.
+- **hooks README (P2): SQL-prose bounded guarantee corrected.** The guarantee
+  claimed "documentation text mentioning a statement stays allowed"; the hook
+  actually (deliberately) blocks prose containing `DROP`/`TRUNCATE`. The README
+  now matches the executable behavior; `policy_consistency.py` gates the phrase.
+
+### Changed (eighth cycle)
+- **testing skill (P2): flaky-test quarantine reworded** — an approved ticket, a
+  still-running non-blocking quarantine lane, and a removal deadline are
+  required; it is never a skip-to-green (CLAUDE.md §2/§10).
+- **verification skill (P2): action boundaries reconciled** — `npm ci`/install
+  annotated as an approval-gated dependency operation; the failure protocol now
+  *proposes* a rollback (preserve state, diagnose read-only) instead of running
+  `git revert` before approval.
+- **session harness (P2): now asserts, not just records.** Each scenario declares
+  `must_load`/`must_not_load`, an expected permission tier, a specific artifact
+  path (no more `.`), and a semantic check; the run exits non-zero on any
+  violation. Scoring is factored into `tests/sessions/score_session.py`,
+  unit-tested offline by `test_score_session.py` (12 cases); an ask-tier
+  scenario (s11) was added.
+- **standards refs (P2/P3)**: NIST SP 800-63B rev 4 password length (≥15
+  single-factor / ≥8 within MFA); `Sunset` = RFC 8594, `Deprecation` = RFC 9745;
+  `X-RateLimit-*` labelled a vendor convention vs the IETF `RateLimit` draft.
+- **universal-claim calibration (P3)**: `git mv` (rename detection is heuristic,
+  not dependent on it), components-fetch (RSC/loaders excepted), readiness
+  dependency checks (amplification caveat), CPU alerting (saturation is valid),
+  mobile horizontal scroll and submit confirmations (intentional cases
+  excepted), Docker `HEALTHCHECK` (orchestrator-owned probes excepted).
+- **test fixtures (P3, A3): Windows portability.** `verify-done` Node fixtures
+  use `node -e "process.exit(N)"` instead of a bare `exit N` npm script, so the
+  suite no longer depends on npm's `script-shell` (the v7 289/291 vs 291/291
+  split). SUPPORT.md records the measured config.
+
 ### Fixed (seventh cycle)
 - **protect-files (P1)**: the `.env.example`/`.sample`/`.template`/`.dist`
   allowlist suppresses only the `.env*` filename deny — previously it exited

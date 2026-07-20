@@ -35,7 +35,7 @@ Guarantee that every logical commit leaves the repository functional: run only t
 | Stack present | Commands |
 |---|---|
 | Python | `python -m compileall`, `pytest`, `ruff check`, `mypy` |
-| Node / frontend | `npm ci`, `npm run build`, `npm test` (script names per `package.json`) |
+| Node / frontend | `npm run build`, `npm test` (script names per `package.json`). **`npm ci`/`npm install` mutate `node_modules` and are a dependency operation — run them only under the current-message approval CLAUDE.md §2 requires, or a documented pre-approved setup scope; never as a silent step.** |
 | Docker / Compose | `docker compose config`, `docker build` |
 | Airflow | `airflow dags list` |
 
@@ -47,10 +47,10 @@ Guarantee that every logical commit leaves the repository functional: run only t
 If ANY verification fails:
 
 1. STOP immediately.
-2. Report: failed command, error output, suspected cause, related changes.
-3. Roll back ONLY the failing change using Git — the smallest surgical operation (e.g. `git revert <commit>`); never a bulk reset of the whole sequence.
+2. **Preserve state — diagnose read-only first.** Do not mutate the tree or history before you understand the failure. Report: failed command, error output, suspected cause, related changes. Read-only inspection only (`git status`, `git diff`, `git log`, re-run the check).
+3. **Propose** the smallest surgical rollback (e.g. `git revert <commit>` of the single failing change, never a bulk reset) with a preview of exactly what it would change — but do **not** execute it. Mutating history or the working tree before approval can erase the failure evidence and changes the user's work (CLAUDE.md §2: destructive/history-mutating operations need explicit confirmation).
 4. Do NOT invent additional fixes. Do NOT continue.
-5. Wait for approval.
+5. Wait for approval, then apply the approved rollback.
 
 ## Workflow
 

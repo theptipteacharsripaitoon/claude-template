@@ -13,6 +13,28 @@ if [[ -z "$CMD" ]]; then
   exit 0  # No command to inspect; allow.
 fi
 
+# --- Multiline normalization (v8) --------------------------------------------
+# grep matches line by line, so before v8 any newline between `rm -rf` and its
+# dangerous target slipped the recursive-rm patterns: `rm -rf \<LF>/` (bash
+# line continuation), `rm -rf<LF>/`, a CRLF split, or `rm -r<LF>-f /` all
+# matched NOTHING and were allowed. Normalize a MATCH-ONLY copy so the patterns
+# see one logical line; $CMD itself is left intact (the block message reports
+# the matched pattern, never the command, so logs are unaffected).
+#   1. A backslash line-continuation (`\` + optional CR + LF) joins tokens in
+#      bash — collapse it to a space.
+#   2. Any remaining CR or LF becomes a space, so a target split across
+#      physical lines cannot hide a recursive rm. This can flag a heredoc that
+#      literally contains a dangerous command (`cat <<EOF … rm -rf / … EOF`),
+#      which is consistent with the hook's existing conservative stance (prose
+#      merely mentioning a dangerous command is already blocked) — override or
+#      reword. Single-line prose protections are untouched: a command with no
+#      newline is not modified here.
+CMD_MATCH=$CMD
+CMD_MATCH=${CMD_MATCH//$'\\\r\n'/ }   # continuation, CRLF
+CMD_MATCH=${CMD_MATCH//$'\\\n'/ }     # continuation, LF
+CMD_MATCH=${CMD_MATCH//$'\r'/ }       # bare CR
+CMD_MATCH=${CMD_MATCH//$'\n'/ }       # bare LF
+
 # Patterns that should ALWAYS be blocked.
 # Each line is a separate regex. Be conservative — false positives are better
 # than missing a real disaster. Claude will surface a normal request to the
@@ -234,10 +256,10 @@ done
 COMBINED_ASK="${COMBINED_ASK#|}"
 
 MATCHED_DESTRUCTIVE=false
-if echo "$CMD" | grep -qiE "$COMBINED_DESTRUCTIVE"; then MATCHED_DESTRUCTIVE=true; fi
+if echo "$CMD_MATCH" | grep -qiE "$COMBINED_DESTRUCTIVE"; then MATCHED_DESTRUCTIVE=true; fi
 
 [[ "$MATCHED_DESTRUCTIVE" == "true" ]] && for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
-  if echo "$CMD" | grep -qiE "$pattern"; then
+  if echo "$CMD_MATCH" | grep -qiE "$pattern"; then
     if check_override "block-destructive"; then
       exit 0  # Override active; allowed but logged.
     fi
@@ -254,10 +276,10 @@ if echo "$CMD" | grep -qiE "$COMBINED_DESTRUCTIVE"; then MATCHED_DESTRUCTIVE=tru
 done
 
 MATCHED_ASK=false
-if echo "$CMD" | grep -qE "$COMBINED_ASK"; then MATCHED_ASK=true; fi
+if echo "$CMD_MATCH" | grep -qE "$COMBINED_ASK"; then MATCHED_ASK=true; fi
 
 [[ "$MATCHED_ASK" == "true" ]] && for pattern in "${ASK_PATTERNS[@]}"; do
-  if echo "$CMD" | grep -qE "${PM}${pattern}"; then
+  if echo "$CMD_MATCH" | grep -qE "${PM}${pattern}"; then
     if check_override "block-destructive"; then
       exit 0  # Override active; allowed but logged.
     fi
@@ -278,9 +300,9 @@ done
 # present; otherwise a trailing package token makes it an install. Before v7 the
 # pattern required a non-dash immediately after `install `, so ANY leading
 # option — a bare `-q` — silently downgraded a real install to allow.
-if echo "$CMD" | grep -qE "${PM}pip3?[[:space:]]+install([[:space:]]|$)" \
-   && ! echo "$CMD" | grep -qE '[[:space:]](-r|--requirement)([[:space:]]|=)' \
-   && echo "$CMD" | grep -qE "install([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*([[:space:]]+|=)[^-[:space:]]+|[[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*)*[[:space:]]+[@a-zA-Z][^[:space:]]*([[:space:]]|$)"; then
+if echo "$CMD_MATCH" | grep -qE "${PM}pip3?[[:space:]]+install([[:space:]]|$)" \
+   && ! echo "$CMD_MATCH" | grep -qE '[[:space:]](-r|--requirement)([[:space:]]|=)' \
+   && echo "$CMD_MATCH" | grep -qE "install([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*([[:space:]]+|=)[^-[:space:]]+|[[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*)*[[:space:]]+[@a-zA-Z][^[:space:]]*([[:space:]]|$)"; then
   if check_override "block-destructive"; then
     exit 0  # Override active; allowed but logged.
   fi
@@ -299,7 +321,7 @@ fi
 # GLOBAL options may sit between `git` and `commit`: before v7 the subcommand
 # had to be adjacent, so `-C`, `-c`, `--no-pager`, `--git-dir` and every future
 # global option silently hid the commit from this check.
-if echo "$CMD" | grep -qE '(^|[[:space:];|&/\\])git([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?([[:space:]]+[^-[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)'; then
+if echo "$CMD_MATCH" | grep -qE '(^|[[:space:];|&/\\])git([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?([[:space:]]+[^-[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)'; then
   BRANCH=$(git -C "${CLAUDE_PROJECT_DIR:-.}" branch --show-current 2>/dev/null || true)
   case "$BRANCH" in
     main|master|production|release/*)

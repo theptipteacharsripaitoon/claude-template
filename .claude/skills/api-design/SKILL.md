@@ -50,7 +50,7 @@ When a breaking change is necessary:
 1. **Announce** in a changelog and migration guide. Include the date when the deprecated path will be removed.
 2. **Add the new endpoint/field/version** alongside the old. Both work.
 3. **Mark old as deprecated:**
-   - REST: `Deprecation: <date>` and `Sunset: <date>` response headers (RFC 8594).
+   - REST: `Sunset: <http-date>` response header (RFC 8594) for the removal date; `Deprecation: <http-date>` header (RFC 9745, 2025) to signal the field/endpoint is deprecated. They are two different RFCs — don't attribute both to 8594.
    - OpenAPI: `deprecated: true` on the operation/field.
    - GraphQL: `@deprecated(reason: "use Foo.bar")`.
 4. **Track usage** of the deprecated path. Reach out to active consumers.
@@ -126,7 +126,7 @@ Use a consistent shape for all errors. RFC 9457 (Problem Details) is the standar
 ### Other headers
 - **Idempotency:** `Idempotency-Key` header on `POST` for safe retries.
 - **Conditional requests:** `ETag` + `If-Match` for optimistic concurrency.
-- **Rate limits:** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+- **Rate limits:** `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset` are a widespread **vendor convention** (GitHub, Stripe, Twitter), not an IETF standard; the active IETF work (`draft-ietf-httpapi-ratelimit-headers`) standardizes un-prefixed `RateLimit`/`RateLimit-Policy` with different semantics. Pick one style and document it; don't present the `X-` headers as a finalized standard.
 - **Tracing:** propagate `traceparent` (W3C Trace Context).
 
 ## GraphQL conventions

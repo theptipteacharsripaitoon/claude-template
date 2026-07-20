@@ -35,7 +35,7 @@ CLAUDE.md §2 says several classes of command "require explicit user confirmatio
 | **deny** (exit 2) | hard block; unblock only by running it yourself or `CLAUDE_HOOK_OVERRIDE` | `rm -rf /` (incl. `/bin/rm`, quoted `"/bin/rm"`/`'rm'`, `\rm`, `rm -rf -- /`, a quoted target `'/srv/data'`, `$HOME`/`${HOME}`/`$PWD`/`${PWD}`/`$(pwd)`, brace sweeps `{…}`), current-directory destruction (`rm -rf ./*`, `"./"*`, `./.??*`, `.[!.]*`, `.[^.]*`, `.`, `..` — named cleanup `rm -rf ./build` stays allowed), force-push (incl. quoted `+refspec`), `git reset --hard`, `git clean -fd`, `DROP TABLE`/`TRUNCATE`/unguarded `DELETE` (schema-qualified; `;`-terminated, ending the command, **or** client-wrapped without `;` in short or long flag form: `psql -c`/`--command`, `mysql -e`/`--execute`, `sqlcmd -Q`/`--query`), `terraform apply`, `kubectl delete namespace`, `curl … \| sh` |
 | **ask** (permission JSON) | approve in-chat instead of restarting | dependency install/upgrade/remove incl. option-first spellings (`pip install -q x` — pip uses explicit restore-vs-install logic), env-redirected installs (`--prefix`/`--target`/`--no-deps`/`--index-url` — a non-default index is a supply-chain decision even for a restore), local-path installs (`npm install ./pkg`) and global tool installs (`cargo install`, `pipx install`, `uv tool install`, `gem install`, `go install`); all anchored at a command position so prose and near-miss names (`mongo install`) never match; lockfile *restores* like `npm ci` are allowed; `git commit` while on `main`/`master`/`production`/`release/*` incl. global options between `git` and `commit` and path/env invocations (CLAUDE.md §2) |
 | **normal permission flow** | no hook opinion → Claude Code's usual per-command prompt | `git push`, `kubectl apply`, `helm upgrade` — mutating but not caught here. Surfaced by Claude Code's own permission prompt **unless the user has pre-allowlisted the command** in their permission settings; the hook layer adds no second gate for these |
-| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; SQL through clients whose statement is a positional argument (`sqlite3 db "DELETE FROM x"`) — the psql/mysql/sqlcmd flag forms are covered, and the quote boundary still keeps documentation text (`echo "DELETE FROM users"`, a commit message) allowed |
+| **not covered (semantic equivalents)** | regex cannot catch these; rely on prose + the other enforcement layers | `python -c "shutil.rmtree(...)"`, base64-encoded payloads, a downloaded script that contains the destructive call; SQL through clients whose statement is a positional argument (`sqlite3 db "DELETE FROM x"`) — the psql/mysql/sqlcmd flag forms are covered. Note the quote boundary only keeps an *unterminated bare* `DELETE FROM` in prose (`echo "DELETE FROM users"`) allowed; prose containing `DROP`/`TRUNCATE`, or a `;`-terminated `DELETE`, is conservatively **blocked** even inside an `echo` or commit message |
 
 The hook is deliberately conservative: a documentation string that merely *mentions* `DROP TABLE` (an `echo` or a commit message) is blocked too. False positives are cheaper than a real disaster; override or reword.
 
@@ -227,8 +227,15 @@ Falsifiable statements, each pinned by regression tests and the policy corpus
 3. **SQL.** Unguarded `DELETE`/`DROP`/`TRUNCATE` is denied when `;`-terminated,
    at end of command, or carried by a `psql`/`mysql`/`sqlcmd` flag in short
    (`-c`/`-e`/`-Q`) or long (`--command`/`--execute`/`--query`) form. Clients
-   taking SQL positionally (`sqlite3 db "…"`) are not covered. Documentation
-   text mentioning a statement stays allowed — that boundary is deliberate.
+   taking SQL positionally (`sqlite3 db "…"`) are not covered. **Prose that
+   mentions `DROP`/`TRUNCATE` is blocked too** — `echo "DROP TABLE users"` and
+   even a commit message containing the phrase are conservative false positives
+   (this matches line 40's admission; false positives are cheaper than a real
+   disaster — override or reword). The one prose form that stays allowed is an
+   *unterminated* `DELETE FROM <name>` with no client token and no `;` (e.g.
+   `echo "DELETE FROM users"`), because that boundary is what keeps a bare
+   `DELETE` in documentation from matching; add a `;` or a client flag and it
+   is denied.
 4. **Strict Stop.** With `CLAUDE_VERIFY_BLOCK=1` the Stop hook exits 2 **only**
    when a checker is discovered, executes, and fails, on the first Stop of a
    turn. No checker found / toolchain missing → exit 0 with an honest "nothing

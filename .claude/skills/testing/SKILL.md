@@ -132,7 +132,7 @@ Blank lines separate the phases. One logical assertion per test (or one logical 
 
 A flaky test is a broken test. Treat it as a P2 bug.
 
-1. **Quarantine immediately** — mark as known-flaky in the tracker, exclude from blocking CI gate.
+1. **Quarantine is a tracked, time-boxed exception — not a skip-to-green.** A quarantine is legitimate ONLY with all of: an approved tracking ticket, the test still **running in a non-blocking quarantine lane** (so it keeps producing signal), and a removal deadline. It never means deleting, `xit`/`@skip`-ing, or silencing the test to make a required gate pass — CLAUDE.md §2/§10 forbid weakening tests to reach green, and this is the same rule. If you cannot stand up a non-blocking lane, leave the test in the gate and fix it.
 2. **Fix within one sprint** or delete. Never let it sit.
 3. **Never retry to pass.** Retries hide real bugs (race conditions, timing assumptions, shared state).
 4. **Track flake rate** as a team metric. >1% flakiness on a test suite is a fire.

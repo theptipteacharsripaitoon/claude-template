@@ -412,6 +412,7 @@ These can be set in your shell to tune behavior:
 | `CLAUDE_PROJECTS_DIR` | `~/projects` | Where `claude-init` creates new projects |
 | `CLAUDE_HOOK_OVERRIDE` | unset | `<hook-name>` or `all` — bypass hook(s) for one session (logged) |
 | `CLAUDE_VERIFY_BLOCK` | `0` | `1` = Stop hook actually runs typecheck/lint/test (heavy but strict) |
+| `CLAUDE_VERIFY_TIMEOUT_S` | `300` | Per-check wall-clock budget in blocking Stop mode. A checker exceeding it is reported as a timeout failure (not a hang). Watch/serve scripts (`--watch`, `next dev`, nodemon…) are detected and skipped before running. |
 | `CLAUDE_DIFF_WARN_LINES` | `300` | Warn when a single Edit/Write changes ≥ this many lines |
 | `CLAUDE_DIFF_BLOCK_LINES` | `1000` | Block when a single Edit/Write changes ≥ this many lines |
 

@@ -203,72 +203,153 @@ claude-init() {
   # tree; that is run output, not template content.
   rm -rf "$tmp/.claude/logs"
 
-  # ---- Profile application (documented in HOW-TO.md; never silent) -----------
-  # Transforms are jq-based edits of the staged settings.json; the source
-  # template is never modified.
-  case "$profile" in
-    minimal)
-      # Deny-tier scan-secrets and the diff guard are REMOVED — this is a
-      # documented safety reduction, echoed at the end of the bootstrap.
-      jq '
-        .hooks.PreToolUse |= map(
-          if .matcher == "Edit|Write|NotebookEdit"
-          then .hooks |= map(select(.command | test("protect-files")))
-          else . end)
-        | del(.hooks.Stop)
-      ' "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
-        && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json"
-      ;;
-    strict)
-      jq '. + {env: ((.env // {}) + {CLAUDE_VERIFY_BLOCK: "1"})}' \
-        "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
-        && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json"
-      ;;
-    security-sensitive)
-      jq '. + {env: ((.env // {}) + {CLAUDE_VERIFY_BLOCK: "1", CLAUDE_DIFF_BLOCK_LINES: "500"})}' \
-        "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
-        && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json"
-      ;;
-    team)
-      # Workflow skills become manual-only (/repository-cleanup, /release-readiness):
-      # deliberate multi-step efforts a team triggers explicitly. Insert the
-      # frontmatter flag right after the name: line.
-      local wf
-      for wf in repository-cleanup release-readiness; do
-        sed -i.bak "0,/^name: $wf$/s//name: $wf\ndisable-model-invocation: true/" \
-          "$tmp/.claude/skills/$wf/SKILL.md" && rm -f "$tmp/.claude/skills/$wf/SKILL.md.bak"
-      done
-      ;;
-  esac
-  if [[ "$profile" != "standard" ]]; then
-    if ! jq empty "$tmp/.claude/settings.json" 2>/dev/null; then
-      rm -rf "$tmp"
-      echo "✗ Profile '$profile' produced invalid settings.json — aborted; nothing was created."
-      return 1
-    fi
-  fi
-
-  # ---- Version stamp + managed-file manifest (update propagation, v7) --------
-  # The manifest records the sha256 of every template-owned file AT GENERATION
-  # TIME. claude-template-status compares current hashes against it to classify
-  # drift; nothing is ever auto-overwritten.
-  {
-    echo "template_commit=$tpl_commit"
-    echo "profile=$profile"
-    echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  } > "$tmp/.claude/.template-version"
-  (
-    cd "$tmp" \
-      && find CLAUDE.md .gitignore .gitattributes .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
-           -type f 2>/dev/null | LC_ALL=C sort \
-      | while IFS= read -r f; do
-          printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
+  # ---- Chained transaction: profile → version → manifest → verify → publish ---
+  # Every stage must succeed OR the whole bootstrap fails closed. Historically
+  # (pre-v8) each stage ran unchecked: a broken `jq` for the strict profile
+  # produced a project labelled `strict` with no CLAUDE_VERIFY_BLOCK in
+  # settings.json, and a broken `sha256sum` produced a manifest of blank
+  # hashes that later validated against itself. Both cases exited 0 and
+  # printed the success message. Fixing that means:
+  #   1. wrap the whole chain in `if ! ( … )` (same construct as the first
+  #      stage) — `set -e` does NOT propagate through `if !` (bash manual),
+  #      so every step needs explicit `|| exit 1`;
+  #   2. after each profile transform, assert the intended env keys actually
+  #      landed — not just that settings.json still parses;
+  #   3. generate the manifest via `sha256sum FILE…` and check its exit code,
+  #      so a broken hasher aborts the bootstrap;
+  #   4. verify the manifest immediately with `sha256sum --check --quiet`
+  #      inside the staging tree;
+  #   5. only then do the final publish (`mv "$tmp" "$dest"`).
+  # On any failure the staging tree is cleaned up and nothing is published.
+  if ! (
+    # Profile transforms — the source template is never modified.
+    case "$profile" in
+      minimal)
+        # Deny-tier scan-secrets and the diff guard are REMOVED — this is a
+        # documented safety reduction, echoed at the end of the bootstrap.
+        jq '
+          .hooks.PreToolUse |= map(
+            if .matcher == "Edit|Write|NotebookEdit"
+            then .hooks |= map(select(.command | test("protect-files")))
+            else . end)
+          | del(.hooks.Stop)
+        ' "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
+          && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json" \
+          || exit 1
+        ;;
+      strict)
+        jq '. + {env: ((.env // {}) + {CLAUDE_VERIFY_BLOCK: "1"})}' \
+          "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
+          && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json" \
+          || exit 1
+        ;;
+      security-sensitive)
+        jq '. + {env: ((.env // {}) + {CLAUDE_VERIFY_BLOCK: "1", CLAUDE_DIFF_BLOCK_LINES: "500"})}' \
+          "$tmp/.claude/settings.json" > "$tmp/.claude/settings.json.new" \
+          && mv "$tmp/.claude/settings.json.new" "$tmp/.claude/settings.json" \
+          || exit 1
+        ;;
+      team)
+        # Workflow skills become manual-only (/repository-cleanup, /release-readiness):
+        # deliberate multi-step efforts a team triggers explicitly. Insert the
+        # frontmatter flag right after the name: line.
+        local wf
+        for wf in repository-cleanup release-readiness; do
+          sed -i.bak "0,/^name: $wf$/s//name: $wf\ndisable-model-invocation: true/" \
+            "$tmp/.claude/skills/$wf/SKILL.md" \
+            && rm -f "$tmp/.claude/skills/$wf/SKILL.md.bak" \
+            || exit 1
+          # Assert the flag actually landed (a silent sed no-op would leave
+          # the skill in its default routing state despite the profile claim).
+          grep -q "^disable-model-invocation: true$" \
+            "$tmp/.claude/skills/$wf/SKILL.md" || exit 1
         done
-  ) > "$tmp/.claude/.template-manifest"
+        ;;
+    esac
 
-  if ! mv "$tmp" "$dest"; then
-    rm -rf "$tmp"
-    echo "✗ Could not move the finished project into $dest."
+    # settings.json must still parse for any non-standard profile.
+    if [[ "$profile" != "standard" ]]; then
+      jq empty "$tmp/.claude/settings.json" 2>/dev/null || exit 1
+    fi
+
+    # Assert the intended env keys actually landed. A `jq` that silently
+    # produced empty output (profile transform failed AND the `&&` short-
+    # circuited the mv) would leave settings.json unchanged — parseable but
+    # NOT strict. This is exactly the P1 false-success path.
+    case "$profile" in
+      strict)
+        [[ "$(jq -r '.env.CLAUDE_VERIFY_BLOCK // ""' \
+          "$tmp/.claude/settings.json")" == "1" ]] || exit 1
+        ;;
+      security-sensitive)
+        [[ "$(jq -r '.env.CLAUDE_VERIFY_BLOCK // ""' \
+          "$tmp/.claude/settings.json")" == "1" ]] || exit 1
+        [[ "$(jq -r '.env.CLAUDE_DIFF_BLOCK_LINES // ""' \
+          "$tmp/.claude/settings.json")" == "500" ]] || exit 1
+        ;;
+      minimal)
+        # scan-secrets and check-diff-size must be REMOVED from the file
+        # hooks; Stop must be gone.
+        [[ "$(jq '[.hooks.PreToolUse[] | select(.matcher=="Edit|Write|NotebookEdit") | .hooks[]] | length' \
+          "$tmp/.claude/settings.json")" == "1" ]] || exit 1
+        jq -e '.hooks.Stop' "$tmp/.claude/settings.json" >/dev/null 2>&1 && exit 1
+        ;;
+    esac
+
+    # Version stamp — written once, atomically.
+    {
+      echo "template_commit=$tpl_commit"
+      echo "profile=$profile"
+      echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "$tmp/.claude/.template-version" || exit 1
+
+    # Manifest generation — sha256sum is captured directly (no pipe) so its
+    # exit code propagates. The previous while-loop form used
+    # `printf '%s  %s' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"`, which
+    # swallowed sha256sum's exit inside a subshell + pipe; a broken hasher
+    # produced blank-hash rows and the whole bootstrap still succeeded.
+    # Manifest format is deliberately "text-mode" (`HASH  PATH`, two spaces)
+    # so claude-template-status's substring parser and `sha256sum --check`
+    # both accept it consistently across platforms (native sha256sum on
+    # MSYS Windows prefixes paths with `*` for binary mode).
+    local mf_files=()
+    while IFS= read -r f; do mf_files+=("$f"); done < <(
+      cd "$tmp" && find CLAUDE.md .gitignore .gitattributes \
+        .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
+        -type f 2>/dev/null | LC_ALL=C sort
+    )
+    [[ "${#mf_files[@]}" -gt 0 ]] || exit 1
+    : > "$tmp/.claude/.template-manifest" || exit 1
+    local mf_raw mf_hash
+    for f in "${mf_files[@]}"; do
+      # Capture the FULL sha256sum output (no pipe): exit code stays reachable.
+      mf_raw=$( cd "$tmp" && sha256sum "$f" ) || exit 1
+      # Extract only the 64-char hex hash; abort if it isn't there.
+      mf_hash="${mf_raw%% *}"
+      [[ ${#mf_hash} -eq 64 ]] || exit 1
+      printf '%s  %s\n' "$mf_hash" "$f" >> "$tmp/.claude/.template-manifest" || exit 1
+    done
+    [[ -s "$tmp/.claude/.template-manifest" ]] || exit 1
+
+    # Reject any manifest row with a blank hash (belt-and-braces: even if
+    # sha256sum somehow returns 0 with garbage output, blank hashes would
+    # make claude-template-status silently "unchanged" every file).
+    if grep -qE '^[[:space:]]{2,}' "$tmp/.claude/.template-manifest"; then
+      exit 1
+    fi
+
+    # Verify the manifest actually validates against the staged tree.
+    ( cd "$tmp" && sha256sum --check --quiet .claude/.template-manifest \
+        2>/dev/null ) || exit 1
+
+    # Final publish — atomic within the same filesystem.
+    mv "$tmp" "$dest" || exit 1
+  ); then
+    rm -rf "$tmp" 2>/dev/null
+    # If the mv partially populated $dest, tear it back down; the destination
+    # must not exist after a failed bootstrap.
+    [[ -e "$dest" ]] && rm -rf "$dest"
+    echo "✗ Bootstrap failed after staging — nothing was published at $dest."
     return 1
   fi
 
@@ -297,6 +378,16 @@ claude-template-status() {
   local version=".claude/.template-version"
   if [[ ! -f "$manifest" || ! -f "$version" ]]; then
     echo "✗ No template manifest here — not a claude-init-generated project (or pre-v7)."
+    return 1
+  fi
+  # Refuse to trust a manifest with any blank-hash row. Pre-v8 a broken
+  # sha256sum during BOTH generation and status produced "" == "" for every
+  # row and the drift report said "unchanged=<all>" — actively misleading.
+  # v8 bootstrap can no longer publish such a manifest, but an existing
+  # pre-v8 project on disk still can carry one; refuse rather than validate.
+  if grep -qE '^[[:space:]]{2,}' "$manifest"; then
+    echo "✗ Manifest contains blank-hash rows — refusing to validate."
+    echo "   Regenerate this project via claude-init (this project's manifest was written under a broken sha256sum)."
     return 1
   fi
   echo "== $(tr '\n' ' ' < "$version")"

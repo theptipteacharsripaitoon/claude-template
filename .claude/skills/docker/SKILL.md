@@ -23,7 +23,7 @@ Extends `CLAUDE.md`. When this skill loads, its rules and Done criteria apply on
 - **`COPY` specific files**, not `COPY . .`. Untracked junk leaks into images.
 - **Set `WORKDIR`** explicitly. Never rely on default.
 - **Use `ENTRYPOINT` for the main process, `CMD` for default args.** Use exec form (`["cmd", "arg"]`), not shell form — signals must reach PID 1.
-- **Set `HEALTHCHECK`** for long-running services. The check must reflect dependency readiness, not just process up (canonical: observability skill).
+- **Set `HEALTHCHECK`** for long-running services that run standalone or under Docker/Compose. The check should reflect real readiness, not just process-up (canonical: observability skill). Exception: under an orchestrator that owns liveness/readiness probes (Kubernetes, ECS, Nomad), the image `HEALTHCHECK` is usually ignored and the probe is defined at the workload level — don't duplicate it there; a generic base image may also legitimately ship none.
 - **Cache mounts** for package managers: `RUN --mount=type=cache,target=/root/.npm npm ci`.
 
 **Security in build:**
@@ -87,7 +87,7 @@ When running containers (compose, k8s, ECS, etc.):
 - [ ] Final image runs as non-root (UID >10000).
 - [ ] No secrets, no `:latest`, no `COPY . .` without `.dockerignore`.
 - [ ] Image scan (trivy/grype) passes with zero high/critical CVEs.
-- [ ] `HEALTHCHECK` defined.
+- [ ] `HEALTHCHECK` defined for standalone/Compose services (or noted N/A when an orchestrator owns the probe).
 - [ ] Image size within budget (or excess justified in PR).
 - [ ] `.dockerignore` excludes `.git`, `.env*`, build artifacts, IDE configs.
 - [ ] `docker-compose.yml` (if present) has healthchecks and resource limits.
