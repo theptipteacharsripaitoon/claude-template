@@ -218,29 +218,55 @@ def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
             timeout=120,
         )
         start = dt.datetime.now(dt.timezone.utc)
+        # stdin=DEVNULL: headless claude polls stdin at startup; an inherited
+        # console handle in a detached run can stall it. Tree-kill on timeout:
+        # subprocess.run's kill() takes only the direct child on Windows — a
+        # node grandchild holding the stdout pipe keeps communicate() blocked
+        # FOREVER (observed: a run hung 14 min with 1.8 s CPU, wedging the
+        # whole evaluation). taskkill /T reaps the tree so the timeout is real.
+        proc_p = subprocess.Popen(
+            [
+                claude,
+                "-p",
+                case["prompt"],
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--setting-sources",
+                "project",
+            ],
+            cwd=seeded,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         try:
-            proc = subprocess.run(
-                [
-                    claude,
-                    "-p",
-                    case["prompt"],
-                    "--output-format",
-                    "stream-json",
-                    "--verbose",
-                    "--setting-sources",
-                    "project",
-                ],
-                cwd=seeded,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=RUN_TIMEOUT_S,
-            )
+            out, err = proc_p.communicate(timeout=RUN_TIMEOUT_S)
         except subprocess.TimeoutExpired:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc_p.pid), "/T", "/F"],
+                    capture_output=True, timeout=30,
+                )
+            else:
+                proc_p.kill()
+            try:
+                proc_p.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
             row["is_error"] = True
             row["error"] = f"timeout after {RUN_TIMEOUT_S}s"
             return row
+
+        class _Done:  # duck-typed stand-in for subprocess.run's result
+            stdout = out
+            stderr = err
+            returncode = proc_p.returncode
+
+        proc = _Done()
         row["duration_s"] = round(
             (dt.datetime.now(dt.timezone.utc) - start).total_seconds(), 1
         )
