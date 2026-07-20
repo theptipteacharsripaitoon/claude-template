@@ -1,6 +1,12 @@
 ---
 name: airflow-layout
-description: Use when organizing an Airflow repository at scale — DAG file placement and naming, per-domain foldering, environment separation, where DAG configs and variables live. Trigger on phrases like "organize the dags folder", "DAG naming convention", "where should this DAG live", "separate dev and prod DAGs". Complements the airflow skill, which owns the canonical dags/plugins/include/tests tree and all DAG authoring rules. Do NOT use for writing or debugging DAGs (airflow) or general project structure (project-layout).
+description: >-
+  Use when organizing an Airflow repository — DAG file placement and naming,
+  per-domain foldering, environment separation, where DAG configs live.
+  Trigger: "organize the dags folder", "DAG naming convention", "where should
+  this DAG live". Do NOT use for writing or debugging DAGs (airflow) or
+  general repo structure (project-layout).
+
 ---
 
 # Airflow Repository Layout

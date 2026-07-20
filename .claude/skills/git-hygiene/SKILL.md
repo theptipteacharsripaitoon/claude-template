@@ -1,6 +1,13 @@
 ---
 name: git-hygiene
-description: Use when preparing git state for a RESTRUCTURING or cleanup effort — the work branch, batches of file moves, commit sequencing, fixing what git tracks. Trigger on phrases like "restructure these folders", "set up the cleanup branch", "cleanup commit strategy", "git mv this batch", "stop tracking generated files", "untrack node_modules". Covers the clean-tree gate, move-first-rename-later, the cleanup commit sequence, and .gitignore standards. Do NOT use for a simple one-off move or rename the user asked for (just do it, commit per CLAUDE.md §11), commit-message format rules, or automated end-of-task commits.
+description: >-
+  Use when preparing git state for a RESTRUCTURING or cleanup — work branch,
+  batches of file moves, commit sequencing, fixing what git tracks. Trigger:
+  "set up the cleanup branch", "git mv this batch", "stop tracking generated
+  files", "untrack node_modules". Do NOT use for a simple one-off move the
+  user asked for (just do it), commit-message format (CLAUDE.md §11), or
+  automated end-of-task commits.
+
 ---
 
 # Git Hygiene for Restructuring

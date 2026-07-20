@@ -1,6 +1,12 @@
 ---
 name: testing
-description: Use when writing, reviewing, or improving tests, especially for non-trivial logic. Trigger on phrases like "write tests for", "add test coverage", "this test is flaky", "test pyramid", "fix the failing test", "mock this", "integration test", "e2e test", or any file matching *.test.* or *_test.* or */tests/*. Covers test pyramid, property-based testing, mutation testing, contract testing, testcontainers, fixtures, and flakiness diagnosis. Extends the basic testing rules in CLAUDE.md.
+description: >-
+  Use when writing, reviewing, or improving tests — unit, integration, e2e,
+  fixtures, mocking, flakiness. Trigger: "write tests for", "add test
+  coverage", "this test is flaky", "mock this", "fix the failing test". Do NOT
+  use for choosing which verification commands to run after restructuring
+  (verification) or reviewing non-test code (python-review).
+
 ---
 
 # Testing (Advanced Patterns)

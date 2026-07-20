@@ -1,6 +1,12 @@
 ---
 name: docker
-description: Use when creating, modifying, or building a Dockerfile, .dockerignore, docker-compose.yml, container image, or any container authoring task. Trigger on phrases like "build the image", "fix the Dockerfile", "containerize this", "update docker-compose", "image is too big", "container won't start", or any file path matching Dockerfile* or docker-compose*. Covers multi-stage builds, image security, runtime hardening, and image size optimization. Do NOT use for reviewing a container change before merge (docker-review) or cluster manifests (kubernetes).
+description: >-
+  Use when authoring containers — Dockerfile, .dockerignore,
+  docker-compose.yml, image builds, size, hardening. Trigger: "build the
+  image", "fix the Dockerfile", "containerize this", "image is too big", or
+  Dockerfile*/docker-compose* paths. Do NOT use for reviewing a container
+  change before merge (docker-review) or cluster manifests (kubernetes).
+
 ---
 
 # Docker & Containers

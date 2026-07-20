@@ -1,6 +1,12 @@
 ---
 name: agent-design
-description: Use when designing an LLM-powered agent or tool-using system — agent responsibilities, tool contracts, guardrails, context budget, failure handling. Trigger on phrases like "design an agent", "add a tool for the model", "the agent keeps looping", "guardrails", "multi-agent", "LLM pipeline design". Covers tool-contract discipline, output validation, approval gates, and run observability. Do NOT use for wording prompts (prompt-engineering), measuring output quality (llm-evaluation), or provider API mechanics.
+description: >-
+  Use when designing an LLM-powered agent or tool-using system —
+  responsibilities, tool contracts, guardrails, context budget, failure
+  handling. Trigger: "design an agent", "add a tool for the model", "the agent
+  keeps looping", "guardrails". Do NOT use for writing prompts
+  (prompt-engineering) or measuring output quality (llm-evaluation).
+
 ---
 
 # Agent Design

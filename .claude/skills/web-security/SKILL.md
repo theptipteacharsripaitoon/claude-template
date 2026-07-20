@@ -1,6 +1,13 @@
 ---
 name: web-security
-description: Use when working on authentication, authorization, sessions, cookies, file uploads, redirects, outbound HTTP calls, security headers, CORS, password hashing, token generation, or any security-sensitive web code. Trigger on phrases like "add login", "set up auth", "handle file upload", "configure CORS", "session cookie", "password hashing", "JWT", "rate limit", "redirect URL", "external API call", or any work touching auth/, login, signup, oauth, session, cookie, csrf, cors. Covers OWASP Top 10 mitigations, secure cookies, CSRF, SSRF, security headers, and crypto choices.
+description: >-
+  Use when building security-sensitive web code — authentication,
+  authorization, sessions, cookies, file uploads, redirects, outbound HTTP,
+  security headers, CORS, password hashing, token generation. Trigger: "add
+  login", "set up auth", "configure CORS", "JWT", "rate limit", or work
+  touching auth/, session, csrf. Do NOT use for scanning a repo for committed
+  secrets (security-review).
+
 ---
 
 # Web Security

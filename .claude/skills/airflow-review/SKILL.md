@@ -1,6 +1,11 @@
 ---
 name: airflow-review
-description: Use when reviewing an Airflow DAG change before merge or deploy — a review checklist over parse integrity, schedule impact, idempotency, and task contracts. Trigger on phrases like "review this DAG", "is this DAG safe to deploy", "check the schedule change", "DAG PR review", "will this backfill". The airflow skill owns the authoring standards; this skill owns the review process. Do NOT use for authoring or debugging DAGs (airflow) or for whole-pipeline data review (etl-review).
+description: >-
+  Use when reviewing an Airflow DAG change before merge or deploy — parse
+  integrity, schedule impact, idempotency, task contracts. Trigger: "review
+  this DAG", "is this DAG safe to deploy", "will this backfill". Do NOT use
+  for authoring DAGs (airflow) or whole-pipeline data review (etl-review).
+
 ---
 
 # Airflow DAG Review

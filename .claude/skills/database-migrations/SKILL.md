@@ -1,6 +1,12 @@
 ---
 name: database-migrations
-description: Use when creating, modifying, or reviewing database migrations, schema changes, table structures, indexes, or any task affecting database structure. Trigger on phrases like "add a column", "create migration", "change the schema", "drop this table", "add an index", "alter table", "schema migration", or any file path under migrations/, db/, alembic/, prisma/migrations, or named *.sql with DDL. Covers expand-migrate-contract pattern, reversibility, zero-downtime deployment, and lock-safe DDL (lock-safety specifics are PostgreSQL-focused; the phase pattern is engine-neutral).
+description: >-
+  Use when creating or reviewing schema changes — migrations, table
+  structures, indexes, backfills, rollback plans. Trigger: "add a column",
+  "create migration", "change the schema", "add an index", or files under
+  migrations/, alembic/. Do NOT use for query/proc correctness review
+  (database-review) or SQL file organization (sql-layout).
+
 ---
 
 # Database & Migrations

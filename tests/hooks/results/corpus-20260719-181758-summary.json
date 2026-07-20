@@ -1,0 +1,111 @@
+{
+  "rows": 205,
+  "scored_rows": 198,
+  "out_of_scope_rows": 7,
+  "out_of_scope_rate": 0.034,
+  "contract_violations": 27,
+  "violation_ids": [
+    "FS-017",
+    "FS-018",
+    "FS-019",
+    "FS-020",
+    "FS-021",
+    "FS-022",
+    "FS-023",
+    "FS-024",
+    "GT-017",
+    "GT-018",
+    "SQ-005",
+    "SQ-006",
+    "SQ-007",
+    "SQ-008",
+    "DP-008",
+    "DP-009",
+    "DP-019",
+    "DP-020",
+    "DP-021",
+    "DP-022",
+    "DP-023",
+    "PF-004",
+    "PF-005",
+    "PF-006",
+    "PF-007",
+    "PF-008",
+    "QT-004"
+  ],
+  "confusion": {
+    "expected_deny": {
+      "deny": 84,
+      "ask": 0,
+      "allow": 15
+    },
+    "expected_ask": {
+      "deny": 0,
+      "ask": 40,
+      "allow": 12
+    },
+    "expected_allow": {
+      "deny": 0,
+      "ask": 0,
+      "allow": 54
+    }
+  },
+  "dangerous_action_recall": 0.821,
+  "strict_deny_recall": 0.848,
+  "legit_allow_rate": 1,
+  "false_deny_rate": 0,
+  "false_allow_rate": 0.179,
+  "ask_accuracy": 0.769,
+  "fp_vs_ideal": 7,
+  "fn_vs_ideal": 33,
+  "by_category": {
+    "dependencies": {
+      "rows": 37,
+      "violations": 7
+    },
+    "diff-size": {
+      "rows": 5,
+      "violations": 0
+    },
+    "filesystem": {
+      "rows": 42,
+      "violations": 8
+    },
+    "git": {
+      "rows": 23,
+      "violations": 2
+    },
+    "harmless-prose": {
+      "rows": 10,
+      "violations": 0
+    },
+    "infrastructure": {
+      "rows": 13,
+      "violations": 0
+    },
+    "option-order": {
+      "rows": 5,
+      "violations": 0
+    },
+    "path-variants": {
+      "rows": 10,
+      "violations": 0
+    },
+    "protected-files": {
+      "rows": 29,
+      "violations": 5
+    },
+    "quoting": {
+      "rows": 5,
+      "violations": 1
+    },
+    "secrets": {
+      "rows": 8,
+      "violations": 0
+    },
+    "sql": {
+      "rows": 18,
+      "violations": 4
+    }
+  }
+}

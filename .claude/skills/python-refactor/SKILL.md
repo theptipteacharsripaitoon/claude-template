@@ -1,6 +1,12 @@
 ---
 name: python-refactor
-description: Use when restructuring existing Python code without changing behavior — renames, extract function/module, moving code between modules, untangling imports. Trigger on phrases like "refactor this", "extract this into a module", "rename this function everywhere", "split this file", "restructure this module". Behavior preservation is mandatory and test-proven. Do NOT use for architecture rewrites or module redesign (out of scope by policy), new features, bug fixes (fix first, refactor separately), or performance work (python-performance).
+description: >-
+  Use when restructuring existing Python code without changing behavior —
+  renames, extract function/module, moving code, untangling imports. Trigger:
+  "refactor this", "extract this into a module", "rename everywhere". Do NOT
+  use for review (python-review), performance work (python-performance), or
+  project structure (python-layout).
+
 ---
 
 # Python Refactor

@@ -110,6 +110,124 @@ airflow_authoring_vs_review:
     must_load: [airflow]
     must_not_load: [airflow-review]
 
+# v7: positive coverage for the 21 skills that had none, so every one of the
+# 37 skills has at least one case where it is the required primary. must_not
+# entries encode the nearest-neighbor boundary each description states.
+full_coverage_positive:
+  - id: cov-agent-design
+    prompt: "Design an agent that triages support tickets with tools - what guardrails does it need?"
+    must_load: [agent-design]
+    must_not_load: [prompt-engineering, llm-evaluation]
+  - id: cov-api-design
+    prompt: "Add a versioned endpoint to list orders with pagination"
+    must_load: [api-design]
+    allowed_companions: [fastapi-review]   # authoring in a FastAPI repo; framework guidance may co-load
+    must_not_load: [api-review]
+  - id: cov-config-management
+    prompt: "Where should the database timeout setting live, and how should the app load it?"
+    must_load: [config-management]
+    must_not_load: [python-layout]
+  - id: cov-database-migrations
+    prompt: "Add a nullable column to the users table with a migration"
+    must_load: [database-migrations]
+    must_not_load: [database-review, sql-layout]
+  - id: cov-dependency-review
+    prompt: "Audit the dependencies for unused or outdated packages"
+    must_load: [dependency-review]
+    must_not_load: []
+  - id: cov-design-system
+    prompt: "Should this new button be a variant of the shared Button component?"
+    must_load: [design-system]
+    must_not_load: [ui-review, frontend-layout]
+  - id: cov-docker
+    prompt: "Containerize this service with a small production image"
+    must_load: [docker]
+    must_not_load: [docker-review, kubernetes]
+  - id: cov-docker-review
+    prompt: "Review this Dockerfile change before we merge it"
+    must_load: [docker-review]
+    allowed_companions: [docker]   # review skill defers authoring standards to docker
+    must_not_load: [kubernetes]
+  - id: cov-documentation
+    prompt: "Write the README with setup instructions for new contributors"
+    must_load: [documentation]
+    must_not_load: []
+  - id: cov-fastapi-review
+    prompt: "Review the FastAPI app - the async routes and the Depends usage"
+    must_load: [fastapi-review]
+    allowed_companions: [python-review]
+    must_not_load: [api-design]
+  - id: cov-kubernetes
+    prompt: "Fix the deployment manifest - pods keep restarting"
+    must_load: [kubernetes]
+    must_not_load: [docker]
+  - id: cov-llm-evaluation
+    prompt: "Build an eval set that catches prompt regressions before deploy"
+    must_load: [llm-evaluation]
+    must_not_load: [prompt-engineering]
+  - id: cov-observability
+    prompt: "Instrument this service with metrics and a health check"
+    must_load: [observability]
+    must_not_load: [verification]
+  - id: cov-prompt-engineering
+    prompt: "The model ignores my output format instructions - fix the system prompt"
+    must_load: [prompt-engineering]
+    must_not_load: [llm-evaluation]
+  - id: cov-python-performance
+    prompt: "This data processing script is too slow on big files - speed it up"
+    must_load: [python-performance]
+    must_not_load: [python-review, python-refactor]
+  - id: cov-python-refactor
+    prompt: "Extract the parsing logic into its own module without changing behavior"
+    must_load: [python-refactor]
+    must_not_load: [python-review, python-layout]
+  - id: cov-python-review
+    prompt: "Review this Python module before it ships"
+    must_load: [python-review]
+    must_not_load: [python-refactor, testing]
+  - id: cov-release-readiness
+    prompt: "Run the release checklist - are we ready to tag v1.2?"
+    must_load: [release-readiness]
+    allowed_companions: [verification, security-review, git-hygiene, documentation]  # thin checklist skill composes these
+    must_not_load: []
+  - id: cov-testing
+    prompt: "Write tests for the payment calculation - happy path and failure modes"
+    must_load: [testing]
+    must_not_load: [verification, python-review]
+  - id: cov-ui-review
+    prompt: "Review the new checkout screen - responsiveness and accessibility"
+    must_load: [ui-review]
+    must_not_load: [design-system, frontend-layout]
+  - id: cov-verification
+    prompt: "Verify the repo still works after these moves - run the right checks"
+    must_load: [verification]
+    must_not_load: [testing, observability]
+
+# v7: ambiguous prompts. must_load is empty on purpose - these rows RECORD what
+# routing does on genuinely two-way prompts instead of asserting one answer.
+# Plausible skills sit in allowed_companions so precision is not charged.
+ambiguous_observation:
+  - id: amb-slow-endpoint
+    prompt: "The orders endpoint is slow"
+    must_load: []
+    allowed_companions: [python-performance, fastapi-review, api-design, database-review, observability]
+    must_not_load: []
+  - id: amb-cleanup-tests
+    prompt: "Clean up the test files"
+    must_load: []
+    allowed_companions: [testing, python-refactor, repository-cleanup, project-layout]
+    must_not_load: []
+  - id: amb-env-secret
+    prompt: "Add the API key to the environment config"
+    must_load: []
+    allowed_companions: [config-management, web-security, security-review]
+    must_not_load: []
+  - id: amb-document-api
+    prompt: "Document the API endpoints"
+    must_load: []
+    allowed_companions: [documentation, api-design]
+    must_not_load: []
+
 evaluated_runs:
   - date: 2026-07-18
     cc_version: 2.1.214

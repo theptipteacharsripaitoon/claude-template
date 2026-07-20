@@ -1,6 +1,11 @@
 ---
 name: docker-review
-description: Use when reviewing a container change before merge — Dockerfile edits, docker-compose changes, base-image bumps, image-size regressions. Trigger on phrases like "review the Dockerfile", "is this image safe", "check the compose change", "image got bigger", "base image update". The docker skill owns the standards; this skill owns the review process and required evidence. Do NOT use for writing/authoring Dockerfiles (docker) or cluster manifests (kubernetes).
+description: >-
+  Use when reviewing a container change before merge — Dockerfile edits,
+  compose changes, base-image bumps, size regressions. Trigger: "review the
+  Dockerfile", "is this image safe", "base image update". Do NOT use for
+  authoring Dockerfiles (docker) or cluster manifests (kubernetes).
+
 ---
 
 # Docker Review

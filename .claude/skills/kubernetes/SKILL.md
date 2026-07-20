@@ -1,6 +1,12 @@
 ---
 name: kubernetes
-description: Use when creating, modifying, or reviewing Kubernetes manifests (Deployment, StatefulSet, Service, Ingress, ConfigMap, Secret, PVC, etc.), Helm charts, Kustomize overlays, kubectl commands, or any k8s-related task. Trigger on phrases like "deploy this", "fix the deployment", "update the helm chart", "configure the service", "set up ingress", "scale the pod", "k8s manifest", or any file path under k8s/, charts/, manifests/, kustomize/. Covers pod security, NetworkPolicy, RBAC, GitOps deployment, and zero-downtime patterns.
+description: >-
+  Use when creating, modifying, or reviewing Kubernetes manifests (Deployment,
+  Service, Ingress, ConfigMap, PVC…), Helm charts, Kustomize overlays, or
+  kubectl usage. Trigger: "deploy this", "fix the manifest", "pods keep
+  restarting", "Helm chart", or files under k8s/, charts/. Do NOT use for
+  container image authoring (docker) or CI pipelines (ci-review).
+
 ---
 
 # Kubernetes

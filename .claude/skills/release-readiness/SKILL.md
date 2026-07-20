@@ -1,6 +1,13 @@
 ---
 name: release-readiness
-description: Use when preparing a release, version tag, or handover — running the pre-release checklist (verification green, secret scan clean, changelog, version tag, rollback plan, sign-off). Trigger on phrases like "ready to release", "cut a release", "tag a version", "release checklist", "prepare v1.2", "handover checklist". Thin checklist skill composing verification, security-review, documentation, and git-hygiene. Do NOT use for deployment/CI pipeline work or for writing the changes being released.
+description: >-
+  Use when preparing a release, version tag, or handover — pre-release
+  checklist: verification green, secret scan clean, changelog, rollback plan,
+  sign-off. Trigger: "ready to release", "cut a release", "tag a version",
+  "release checklist". Thin checklist composing verification, security-review,
+  documentation, git-hygiene. Do NOT use for deploy/CI pipeline work or
+  writing the changes being released.
+
 ---
 
 # Release Readiness

@@ -1,6 +1,12 @@
 ---
 name: api-review
-description: Use when reviewing an API change before merge — classifying it breaking vs non-breaking, checking deprecation compliance, schema-diff evidence, and contract tests. Trigger on phrases like "review this endpoint change", "is this a breaking change", "can we remove this field", "API PR review", "check the schema diff". The api-design skill owns the design standards; this skill owns the review process. Do NOT use for designing new APIs (api-design) or framework-level review (fastapi-review).
+description: >-
+  Use when reviewing an API change before merge — breaking vs non-breaking,
+  deprecation compliance, schema-diff evidence, contract tests. Trigger:
+  "review this endpoint change", "is this a breaking change", "can we remove
+  this field". Do NOT use for designing new APIs (api-design) or
+  framework-level review (fastapi-review).
+
 ---
 
 # API Review

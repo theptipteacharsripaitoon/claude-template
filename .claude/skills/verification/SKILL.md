@@ -1,6 +1,12 @@
 ---
 name: verification
-description: Use when verifying a repository still works after changes during cleanup, restructuring, or any multi-commit work — choosing which verification commands apply, running them after each commit, and handling failures. Trigger on phrases like "verify the changes", "run the checks", "did that move break anything", "verification failed", "roll back the failing change". Covers per-commit verification, the blocking-failure policy, and the surgical-rollback protocol. Do NOT use for authoring new tests (see testing skill) or for designing CI pipelines.
+description: >-
+  Use when verifying a repository still works after changes during cleanup,
+  restructuring, or multi-commit work — choosing which verification commands
+  apply, running them after each commit, handling failures. Trigger: "verify
+  the changes", "make sure nothing broke", "run the checks". Do NOT use for
+  writing new tests (testing) or adding monitoring (observability).
+
 ---
 
 # Verification

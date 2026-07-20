@@ -1,6 +1,12 @@
 ---
 name: prompt-engineering
-description: Use when writing or changing a production prompt — system prompts, instruction blocks, few-shot examples, output format specs. Trigger on phrases like "improve this prompt", "the model ignores my instructions", "output format keeps breaking", "write a system prompt", "prompt template". Covers prompt structure, schema-first outputs, injection resistance, and prompt versioning. Do NOT use for agent architecture (agent-design) or building eval suites (llm-evaluation).
+description: >-
+  Use when writing or changing a production prompt — system prompts,
+  instruction blocks, few-shot examples, output format specs. Trigger:
+  "improve this prompt", "the model ignores my instructions", "output format
+  keeps breaking". Do NOT use for measuring prompt quality (llm-evaluation) or
+  agent/tool architecture (agent-design).
+
 ---
 
 # Prompt Engineering
