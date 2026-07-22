@@ -296,11 +296,16 @@ claude-init() {
         ;;
     esac
 
-    # Version stamp — written once, atomically.
+    # Version stamp — written once, atomically. `date` is captured into a
+    # variable and checked FIRST: embedded in the `echo` (as it was) a failing
+    # `date` left generated_utc="" while the block still exited 0 and published.
+    local stamp_utc
+    stamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ) || exit 1
+    [[ -n "$stamp_utc" ]] || exit 1
     {
       echo "template_commit=$tpl_commit"
       echo "profile=$profile"
-      echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "generated_utc=$stamp_utc"
     } > "$tmp/.claude/.template-version" || exit 1
 
     # Manifest generation — sha256sum is captured directly (no pipe) so its
@@ -312,12 +317,18 @@ claude-init() {
     # so claude-template-status's substring parser and `sha256sum --check`
     # both accept it consistently across platforms (native sha256sum on
     # MSYS Windows prefixes paths with `*` for binary mode).
+    # Enumerate the managed files with the producer status OBSERVED. The old
+    # form (`find … | sort` inside `< <(process substitution)`) hid BOTH exit
+    # codes: a find or sort that emitted a partial list and then failed produced
+    # a short-but-nonempty manifest that verified against itself and published.
+    # Capturing each stage in its own command substitution propagates its exit.
+    local mf_find mf_sorted
+    mf_find=$(cd "$tmp" && find CLAUDE.md .gitignore .gitattributes \
+      .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
+      -type f) || exit 1
+    mf_sorted=$(LC_ALL=C sort <<<"$mf_find") || exit 1
     local mf_files=()
-    while IFS= read -r f; do mf_files+=("$f"); done < <(
-      cd "$tmp" && find CLAUDE.md .gitignore .gitattributes \
-        .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
-        -type f 2>/dev/null | LC_ALL=C sort
-    )
+    while IFS= read -r f; do [[ -n "$f" ]] && mf_files+=("$f"); done <<<"$mf_sorted"
     [[ "${#mf_files[@]}" -gt 0 ]] || exit 1
     : > "$tmp/.claude/.template-manifest" || exit 1
     local mf_raw mf_hash
@@ -330,6 +341,18 @@ claude-init() {
       printf '%s  %s\n' "$mf_hash" "$f" >> "$tmp/.claude/.template-manifest" || exit 1
     done
     [[ -s "$tmp/.claude/.template-manifest" ]] || exit 1
+
+    # Block a TRUNCATED manifest even when the producer exited 0: every required
+    # anchor must have a row, and the hooks/ and skills/ subtrees must each
+    # contribute at least one. A partial enumeration cannot silently drop
+    # managed files (which claude-template-status would then never track).
+    local anchor
+    for anchor in CLAUDE.md .gitignore .gitattributes \
+                  .claude/settings.json .claude/ENFORCEMENT.md; do
+      grep -qE "  ${anchor}\$" "$tmp/.claude/.template-manifest" || exit 1
+    done
+    grep -qE '  \.claude/hooks/' "$tmp/.claude/.template-manifest" || exit 1
+    grep -qE '  \.claude/skills/' "$tmp/.claude/.template-manifest" || exit 1
 
     # Reject any manifest row with a blank hash (belt-and-braces: even if
     # sha256sum somehow returns 0 with garbage output, blank hashes would

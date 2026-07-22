@@ -300,6 +300,73 @@ else
   bad FI8 "prep failed: no manifest to poison"
 fi
 
+# FI9 — version-stamp `date` failure must fail closed. Before the fix,
+# `generated_utc=$(date …)` sat inside an `echo` whose enclosing block still
+# exited 0, so a broken `date` published a project with an EMPTY timestamp.
+SHIM=$(make_shim date "T%H:%M:%SZ")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi9 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI9 "$PDI" "$out" fi9
+else
+  bad FI9 "expected non-zero exit for version-stamp date failure; got 0"
+fi
+
+# FI10 — partial manifest via `find`: emit a SUBSET then exit nonzero. The
+# manifest enumeration ran behind process substitution, so a truncated list that
+# exited nonzero was invisible; the short manifest verified against itself and
+# published. Only the manifest call (`… -type f`) is hijacked.
+SHIM=$(mktemp -d "$SCRATCH/shim-findp-XXXX")
+REAL_FIND="$(command -v find)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally — $*/$@ expand when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *"-type f"*) echo CLAUDE.md; exit 1 ;; esac\n'
+  printf 'exec %q "$@"\n' "$REAL_FIND"
+} > "$SHIM/find"
+chmod +x "$SHIM/find"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi10 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI10 "$PDI" "$out" fi10
+else
+  bad FI10 "expected non-zero exit for partial-find manifest; got 0"
+fi
+
+# FI11 — partial manifest via `sort`: emit a subset then exit nonzero. Same
+# process-substitution blind spot on the consuming side of the pipe.
+SHIM=$(mktemp -d "$SCRATCH/shim-sortp-XXXX")
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'head -n1; exit 1\n'
+} > "$SHIM/sort"
+chmod +x "$SHIM/sort"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi11 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI11 "$PDI" "$out" fi11
+else
+  bad FI11 "expected non-zero exit for partial-sort manifest; got 0"
+fi
+
+# FI12 — partial manifest that even exits 0: a `find` that drops files but
+# succeeds must still fail closed, because the manifest omits required anchors
+# (here .claude/settings.json). Guards the exit-0 truncation the status checks
+# above cannot see.
+SHIM=$(mktemp -d "$SCRATCH/shim-find0-XXXX")
+REAL_FIND="$(command -v find)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *"-type f"*) echo CLAUDE.md; exit 0 ;; esac\n'
+  printf 'exec %q "$@"\n' "$REAL_FIND"
+} > "$SHIM/find"
+chmod +x "$SHIM/find"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi12 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI12 "$PDI" "$out" fi12
+else
+  bad FI12 "expected non-zero exit for anchor-incomplete manifest; got 0"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1
