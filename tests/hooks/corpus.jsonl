@@ -63,6 +63,15 @@
 {"id":"GT-021","category":"git","tool":"Bash","command":"git -C ../other-repo commit -am wip","project":"feat","target":"main","expected":"allow","ideal":"ask","oos":true,"note":"v7: cross-repo -C; branch detection reads project dir, not -C target (bounded-guarantee decision)"}
 {"id":"GT-022","category":"git","tool":"Bash","command":"git -C . commit -am wip","project":"feat","expected":"allow","note":"v7 control: -C dot on feature branch"}
 {"id":"GT-023","category":"git","tool":"Bash","command":"git log --grep 'rm -rf'","expected":"allow","note":"searching history for the string"}
+{"id":"GT-024","category":"git","tool":"Bash","command":"git -C /repo reset --hard HEAD","expected":"deny","note":"H1: global -C before destructive subcommand"}
+{"id":"GT-025","category":"git","tool":"Bash","command":"git -c gc.auto=0 clean -fd","expected":"deny","note":"H1: global -c value before clean -fd"}
+{"id":"GT-026","category":"git","tool":"Bash","command":"git --git-dir=/r/.git push --force origin main","expected":"deny","note":"H1: --git-dir= before force push"}
+{"id":"GT-027","category":"git","tool":"Bash","command":"git --work-tree /r reset --hard","expected":"deny","note":"H1: --work-tree space-value before hard reset"}
+{"id":"GT-028","category":"git","tool":"Bash","command":"git -C . push -f origin feat","expected":"deny","note":"H1: -C before short force push"}
+{"id":"GT-029","category":"git","tool":"Bash","command":"git --no-pager clean -df","expected":"deny","note":"H1: valueless global before clean"}
+{"id":"GT-030","category":"git","tool":"Bash","command":"git -C . status","expected":"allow","note":"H1 near-miss: global option, harmless subcommand"}
+{"id":"GT-031","category":"git","tool":"Bash","command":"git -c user.name=x log --oneline","expected":"allow","note":"H1 near-miss: -c value, harmless subcommand"}
+{"id":"GT-032","category":"git","tool":"Bash","command":"git --no-pager diff","expected":"allow","note":"H1 near-miss: valueless global, harmless subcommand"}
 {"id":"SQ-001","category":"sql","tool":"Bash","command":"psql -c \"DELETE FROM users\"","expected":"deny","note":"client-wrapped unguarded delete"}
 {"id":"SQ-002","category":"sql","tool":"Bash","command":"psql -c 'DELETE FROM users'","expected":"deny","note":"single-quoted"}
 {"id":"SQ-003","category":"sql","tool":"Bash","command":"mysql -e \"DELETE FROM users\"","expected":"deny","note":"mysql short flag"}
