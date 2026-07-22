@@ -493,6 +493,40 @@ else
   bad FI18 "expected non-zero exit for template HEAD change; got 0"
 fi
 
+# --- B6/B7/B8: argument arity + status hasher/manifest validation ------------
+
+# PARITY — `--profile` with no value must fail fast, never loop. `shift 2` with
+# a single remaining positional used to spin forever (a 2s repro hit exit 124).
+if timeout 5 bash -c "source '$REPO/claude-init.sh' && CLAUDE_PROJECTS_DIR='$SCRATCH/parity' CLAUDE_TEMPLATE_DIR='$TPL' claude-init --profile" >/dev/null 2>&1; then
+  bad PARITY "--profile with no value should exit non-zero"
+else
+  prc=$?
+  (( prc == 124 )) && bad PARITY "--profile with no value HANGS (timed out)" \
+                   || ok  PARITY "--profile with no value refused, no hang"
+fi
+
+# STHASH — claude-template-status must fail VISIBLY when the hasher errors, not
+# silently mark every file "LOCALLY MODIFIED" (sha256sum was piped, exit lost).
+PDH="$SCRATCH/psh"; ci "$PDH" "$TPL" sh1 >/dev/null 2>&1
+SHIM=$(make_shim sha256sum "")   # fail every sha256sum
+sout=$(cd "$PDH/sh1" && env "PATH=$SHIM:$PATH" bash -c "source '$REPO/claude-init.sh' && claude-template-status" 2>&1); src=$?
+if (( src != 0 )); then ok STHASH "status fails visibly on broken hasher"; else bad STHASH "status masked hasher failure (exit 0): $(head -c 80 <<<"$sout")"; fi
+
+# STMANI — a tampered manifest with a path-traversal row must be REFUSED, never
+# used to hash an arbitrary file outside the project.
+PDM="$SCRATCH/psm"; ci "$PDM" "$TPL" sm1 >/dev/null 2>&1
+printf '%s  %s\n' "$(printf 'a%.0s' {1..64})" "../../../../etc/hostname" >> "$PDM/sm1/.claude/.template-manifest"
+mout=$(cd "$PDM/sm1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); mrc=$?
+if (( mrc != 0 )); then ok STMANI "status rejects traversal manifest path"; else bad STMANI "status followed unsafe manifest path (rc=$mrc): $(head -c 80 <<<"$mout")"; fi
+
+# STSYM — a manifest row whose path is a symlink must be refused (a symlink can
+# redirect the hash check at a file outside the project).
+PDS="$SCRATCH/pss"; ci "$PDS" "$TPL" ss1 >/dev/null 2>&1
+ln -s /etc/hostname "$PDS/ss1/evil-link"
+printf '%s  %s\n' "$(printf 'b%.0s' {1..64})" "evil-link" >> "$PDS/ss1/.claude/.template-manifest"
+yout=$(cd "$PDS/ss1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); yrc=$?
+if (( yrc != 0 )); then ok STSYM "status refuses symlinked manifest path"; else bad STSYM "status followed symlink row (rc=$yrc): $(head -c 80 <<<"$yout")"; fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1

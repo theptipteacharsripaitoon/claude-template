@@ -43,7 +43,12 @@ claude-init() {
   while (( $# > 0 )); do
     case "$1" in
       --dry-run) dry_run=1; shift ;;
-      --profile) profile="${2:-}"; shift 2 ;;
+      --profile)
+        # Validate arity BEFORE `shift 2`: with a single remaining positional,
+        # `shift 2` is a no-op that returns nonzero, so `while (( $# > 0 ))`
+        # never terminates — a bare `claude-init --profile` used to hang.
+        [[ $# -ge 2 ]] || { echo "✗ --profile needs a value (minimal|standard|strict|team|security-sensitive)."; return 1; }
+        profile="$2"; shift 2 ;;
       --profile=*) profile="${1#--profile=}"; shift ;;
       -*)
         echo "✗ Unknown option '$1'. Usage: claude-init [--dry-run] [--profile P] <name>"
@@ -455,14 +460,40 @@ claude-template-status() {
   fi
   echo "== $(tr '\n' ' ' < "$version")"
   local unchanged=0 modified=0 miss_count=0
-  local hash path current
+  local hash path current seen="" hout
   while IFS= read -r line; do
     hash="${line%%  *}"; path="${line#*  }"
+    # Validate each row before trusting it: a tampered manifest must never be
+    # able to steer the hash check at a file outside the project. Refuse the
+    # whole report (do not partially process) on any malformed hash or unsafe
+    # path — grammar, absolute, traversal, symlink, and duplicate.
+    if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "✗ Manifest has a malformed hash row — refusing to validate." >&2
+      return 1
+    fi
+    case "$path" in
+      /*)                          echo "✗ Manifest path is absolute ('$path') — refusing." >&2; return 1 ;;
+      ".."|"../"*|*"/../"*|*"/..")  echo "✗ Manifest path escapes the project ('$path') — refusing." >&2; return 1 ;;
+    esac
+    if [[ -L "$path" ]]; then
+      echo "✗ Manifest path is a symlink ('$path') — refusing." >&2
+      return 1
+    fi
+    case "$seen" in
+      *"|$path|"*) echo "✗ Manifest lists '$path' more than once — refusing." >&2; return 1 ;;
+    esac
+    seen="$seen|$path|"
     if [[ ! -f "$path" ]]; then
       echo "MISSING            $path"
       miss_count=$((miss_count+1))
     else
-      current=$(sha256sum "$path" | cut -d' ' -f1)
+      # Capture the hasher exit (no pipe): a broken sha256sum must fail visibly,
+      # not silently report every file "LOCALLY MODIFIED".
+      hout=$(sha256sum "$path") || {
+        echo "✗ sha256sum failed on '$path' — cannot compute drift. Aborting." >&2
+        return 1
+      }
+      current="${hout%% *}"
       if [[ "$current" == "$hash" ]]; then
         unchanged=$((unchanged+1))
       else
