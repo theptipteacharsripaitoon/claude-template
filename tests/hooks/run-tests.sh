@@ -858,6 +858,24 @@ if [[ "$got" == 0 ]] && ! grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 
 else
   FAIL=$((FAIL+1)); printf 'FAIL %-6s valid JSON should not log FAIL_OPEN (exit %s)\n' FO3 "$got"
 fi
+# FO4/FO5: scan-secrets reads several fields at once and used a raw `jq … ||
+# true`, so malformed input failed open SILENTLY (no FAIL_OPEN row). It must now
+# record the bypass like the other hooks, and stay silent on valid JSON.
+: > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' 'THIS IS NOT JSON' | bash "$HOOKS/scan-secrets.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]] && grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
+   && ! grep -qi 'THIS IS NOT JSON' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s scan-secrets malformed input fails open + logged\n' FO4
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s scan-secrets should log FAIL_OPEN on malformed input (exit %s)\n' FO4 "$got"
+fi
+: > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' '{"tool_input":{"content":"ok"}}' | bash "$HOOKS/scan-secrets.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]] && ! grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s scan-secrets valid JSON does not trip fail-open\n' FO5
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s scan-secrets valid JSON should not log FAIL_OPEN (exit %s)\n' FO5 "$got"
+fi
 
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"

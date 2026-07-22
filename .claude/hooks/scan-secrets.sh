@@ -9,12 +9,23 @@ require_jq
 
 INPUT=$(read_input)
 
+# scan-secrets reads SEVERAL fields at once, so it cannot route through json_get
+# (which validates a single field). Do the same malformed-input check here: a
+# parse failure fails OPEN but is now OBSERVABLE — a FAIL_OPEN row naming the
+# hook, no payload — instead of the old silent `jq … || true` swallow (review
+# P2, an invisible guardrail bypass).
+if [[ -n "$INPUT" ]] && ! printf '%s' "$INPUT" | jq empty >/dev/null 2>&1; then
+  log_fail_open "malformed-input"
+  exit 0
+fi
+
 # Different tools put content in different fields:
 #   Write: tool_input.content
 #   Edit:  tool_input.new_string
 #   NotebookEdit: tool_input.new_source
 #   (legacy MultiEdit: tool_input.edits[].new_string)
-# `|| true`: malformed JSON fails open (same policy as require_jq).
+# Input is validated as parseable above; the `|| true` is a belt for any other
+# jq hiccup, not a silent malformed-input path.
 CONTENT=$(echo "$INPUT" | jq -r '
   (.tool_input.content // "") +
   "\n" +
