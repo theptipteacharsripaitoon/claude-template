@@ -87,6 +87,18 @@ echo "== block-destructive: rm/clean/SQL variants (threat-matrix v3) =="
 t BD20 2 block-destructive.sh "$(cmd 'rm -fr /tmp/x')"
 t BD21 2 block-destructive.sh "$(cmd 'rm -r -f /tmp/x')"
 t BD22 2 block-destructive.sh "$(cmd 'rm --recursive --force /tmp/x')"
+echo "== block-destructive: git global options do not hide the subcommand (H1) =="
+t BDG1 2 block-destructive.sh "$(cmd 'git -C /repo reset --hard HEAD')"
+t BDG2 2 block-destructive.sh "$(cmd 'git -c gc.auto=0 clean -fd')"
+t BDG3 2 block-destructive.sh "$(cmd 'git --git-dir=/r/.git push --force origin main')"
+t BDG4 2 block-destructive.sh "$(cmd 'git --work-tree /r reset --hard')"
+t BDG5 2 block-destructive.sh "$(cmd 'git -C . push -f origin feat')"
+t BDG6 0 block-destructive.sh "$(cmd 'git -C . status')"
+t BDG7 0 block-destructive.sh "$(cmd 'git --no-pager diff')"
+echo "== block-destructive: rm value-bearing options do not hide -rf (H2) =="
+t BDRM1 2 block-destructive.sh "$(cmd 'rm --interactive=never -rf /')"
+t BDRM2 2 block-destructive.sh "$(cmd 'rm --interactive=once -Rf /srv/data')"
+t BDRM3 0 block-destructive.sh "$(cmd 'rm --interactive=never -rf ./build')"
 # shellcheck disable=SC2016  # deliberate: the payload must carry a LITERAL $HOME
 t BD23 2 block-destructive.sh "$(cmd 'rm -rf "$HOME"')"
 t BD24 2 block-destructive.sh "$(cmd 'git clean -df')"
@@ -145,6 +157,18 @@ t_ask PFA1 protect-files.sh "$(fp '/repo/package-lock.json')"
 t_ask PFA2 protect-files.sh "$(fp '/repo/migrations/0001_init.sql')"
 t_ask PFA3 protect-files.sh "$(fp '/repo/.github/workflows/ci.yml')"
 t_ask PFA4 protect-files.sh "$(fp '/repo/.claude/hooks/x.sh')"
+echo "== protect-files: instruction/policy/eval sources ASK (H3) =="
+t_ask PFPOL1 protect-files.sh "$(fp '/repo/CLAUDE.md')"
+t_ask PFPOL2 protect-files.sh "$(fp '/repo/.claude/ENFORCEMENT.md')"
+t_ask PFPOL3 protect-files.sh "$(fp '/repo/.claude/skills/docker/SKILL.md')"
+t_ask PFPOL4 protect-files.sh "$(fp '/repo/tests/hooks/corpus.jsonl')"
+t_ask PFPOL5 protect-files.sh "$(fp '/repo/tests/skills/trigger-cases.yaml')"
+t_noask PFPOL6 protect-files.sh "$(fp '/repo/docs/guide.md')"
+echo "== protect-files: symlink alias resolves, not bypasses (H4) =="
+: > "$SCRATCH/.env"; ln -sf "$SCRATCH/.env" "$SCRATCH/env-alias"
+t PFSYM1 2 protect-files.sh "$(fp "$SCRATCH/env-alias")"
+: > "$SCRATCH/plain.py"; ln -sf "$SCRATCH/plain.py" "$SCRATCH/safe-alias"
+t PFSYM2 0 protect-files.sh "$(fp "$SCRATCH/safe-alias")"
 echo "== protect-files: NotebookEdit coverage (migrations ask) =="
 t_ask NB1 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/migrations/x.ipynb"}}'
 echo "== protect-files: ask JSON stays valid on hostile basenames =="
@@ -199,7 +223,7 @@ if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); echo "PASS VD3    no git -> exit 0"
 # VD5: blocking mode with NO discoverable checker must NOT claim "passed".
 mkdir -p "$SCRATCH/nochecks" && ( cd "$SCRATCH/nochecks" && git init -q . && echo "x=1" > a.py && git add a.py && git -c user.email=t@t -c user.name=t commit -qm init && echo "x=2" > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "CLAUDE_PROJECT_DIR=$SCRATCH/nochecks" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd5.txt" || got=$?
-if [[ "$got" == 0 ]] && ! grep -q 'checks passed' "$SCRATCH/vd5.txt" && grep -qi 'no verification' "$SCRATCH/vd5.txt"; then PASS=$((PASS+1)); echo "PASS VD5    no checks discovered -> not reported as passed"; else FAIL=$((FAIL+1)); echo "FAIL VD5    want exit 0 + 'no verification' (not 'checks passed'); got exit $got"; fi
+if [[ "$got" == 2 ]] && ! grep -q 'checks passed' "$SCRATCH/vd5.txt" && grep -qi 'no verification command could run' "$SCRATCH/vd5.txt"; then PASS=$((PASS+1)); echo "PASS VD5    strict: no checker discovered -> fail closed (exit 2)"; else FAIL=$((FAIL+1)); echo "FAIL VD5    want exit 2 + block (not 'checks passed'); got exit $got"; fi
 # VD6: blocking mode with a real PASSING checker must run it and exit 0.
 # (Regression: bare ((RAN++)) under set -e aborted the hook before any check.)
 # Script is `node -e process.exit(0)`, NOT `exit 0`: v8 portability — a bare
@@ -234,7 +258,7 @@ if [[ "$got" == 0 ]] && grep -q 'All 3' "$SCRATCH/vd8.txt"; then PASS=$((PASS+1)
 # host — the hook runs on a RESTRICTED PATH containing wrappers for exactly the
 # tools it needs, so bun stays absent even on bun-equipped machines.
 RBIN="$SCRATCH/rbin"; mkdir -p "$RBIN"
-for vd_tool in bash git jq grep mkdir date cat tr basename dirname; do
+for vd_tool in bash git jq grep mkdir date cat tr basename dirname sed timeout gtimeout; do
   vd_path="$(command -v "$vd_tool")" \
     && printf '#!/bin/sh\nexec "%s" "$@"\n' "$vd_path" > "$RBIN/$vd_tool" \
     && chmod +x "$RBIN/$vd_tool"
@@ -245,7 +269,7 @@ mkdir -p "$SCRATCH/nodebun" && ( cd "$SCRATCH/nodebun" && git init -q . \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
   && printf 'x=1\n' > a.py )
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodebun" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd9.txt" || got=$?
-if [[ "$got" == 0 ]] && grep -qi 'no verification' "$SCRATCH/vd9.txt"; then PASS=$((PASS+1)); echo "PASS VD9    missing checker binary -> honest 'no verification', exit 0 (restricted PATH)"; else FAIL=$((FAIL+1)); echo "FAIL VD9    want exit 0 + 'no verification'; got exit $got: $(head -c 120 "$SCRATCH/vd9.txt" | tr -d '\n')"; fi
+if [[ "$got" == 2 ]] && grep -qi 'no verification command could run' "$SCRATCH/vd9.txt"; then PASS=$((PASS+1)); echo "PASS VD9    strict: missing checker binary -> fail closed (exit 2, restricted PATH)"; else FAIL=$((FAIL+1)); echo "FAIL VD9    want exit 2 + block; got exit $got: $(head -c 120 "$SCRATCH/vd9.txt" | tr -d '\n')"; fi
 # VD9b: same fixture with a stub bun PREPENDED to the restricted PATH — presence
 # is controlled too, and the hook must run the package.json test SCRIPT through
 # it (`bun run test`), never Bun's native runner (`bun test` exits 1 "No tests
@@ -267,6 +291,41 @@ mkdir -p "$SCRATCH/nodebunlock" && ( cd "$SCRATCH/nodebunlock" && git init -q . 
 : > "$SCRATCH/bun-argv.txt"
 got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$BUNSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodebunlock" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd12.txt" || got=$?
 if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vd12.txt" && grep -qx 'bun run test' "$SCRATCH/bun-argv.txt"; then PASS=$((PASS+1)); echo "PASS VD12   bun.lock (text) selects bun and runs the package script"; else FAIL=$((FAIL+1)); echo "FAIL VD12   want bun selected + 'bun run test' argv; got exit $got: $(head -c 100 "$SCRATCH/vd12.txt" | tr -d '\n') argv: $(tr '\n' ';' < "$SCRATCH/bun-argv.txt")"; fi
+
+# --- S1/S2/S3/S5: bounded, fail-closed Stop verification ---------------------
+# Own isolated fixture ($SCRATCH/nodewf) and stub argv file — VD13 below uses
+# its own $SCRATCH/nodewatch, and sharing a dir would leave one test's committed
+# a.py making the other's tree clean (verify-done would exit early). The
+# restricted PATH ($RBIN) now carries a real `timeout`, so these are
+# deterministic on any host. The stub npm records argv and exits 0.
+WFSTUB="$SCRATCH/npmstub-wf"; mkdir -p "$WFSTUB"
+printf '#!/bin/sh\necho "npm $*" >> "%s"\nexit 0\n' "$SCRATCH/npmwf-argv.txt" > "$WFSTUB/npm"; chmod +x "$WFSTUB/npm"
+mkdir -p "$SCRATCH/nodewf" && ( cd "$SCRATCH/nodewf" && git init -q . \
+  && printf '{"name":"x","version":"1.0.0","scripts":{"test":"vitest --watch=false"}}\n' > package.json \
+  && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
+  && printf 'y=2\n' > b.py )
+
+# VDW1 (S3) — `--watch=false` is a FINITE run, not a watcher: must be executed.
+: > "$SCRATCH/npmwf-argv.txt"
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$WFSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodewf" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vdw.txt" || got=$?
+if [[ "$got" == 0 ]] && grep -q 'check(s) passed' "$SCRATCH/vdw.txt" && grep -qx 'npm run test' "$SCRATCH/npmwf-argv.txt"; then PASS=$((PASS+1)); echo "PASS VDW1   --watch=false is run, not skipped as a watcher"; else FAIL=$((FAIL+1)); echo "FAIL VDW1   want 'check(s) passed' + 'npm run test'; got exit $got: $(head -c 100 "$SCRATCH/vdw.txt" | tr -d '\n')"; fi
+
+# VDD1 (S1) — the aggregate budget bounds TOTAL verification (0 => immediate).
+: > "$SCRATCH/npmwf-argv.txt"
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$WFSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodewf" CLAUDE_VERIFY_BLOCK=1 CLAUDE_VERIFY_TOTAL_TIMEOUT_S=0 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vdd.txt" || got=$?
+if [[ "$got" == 2 ]] && grep -qi 'budget' "$SCRATCH/vdd.txt"; then PASS=$((PASS+1)); echo "PASS VDD1   aggregate budget exhausted -> check skipped, blocked"; else FAIL=$((FAIL+1)); echo "FAIL VDD1   want exit 2 + 'budget'; got exit $got: $(head -c 100 "$SCRATCH/vdd.txt" | tr -d '\n')"; fi
+
+# VDNT1 (S2) — blocking mode with NO timeout tool must fail closed, not run
+# unbounded. Restricted PATH built WITHOUT timeout/gtimeout.
+RBIN_NT="$SCRATCH/rbin-nt"; mkdir -p "$RBIN_NT"
+for vd_tool in bash git jq grep mkdir date cat tr basename dirname sed; do
+  vd_path="$(command -v "$vd_tool")" && printf '#!/bin/sh\nexec "%s" "$@"\n' "$vd_path" > "$RBIN_NT/$vd_tool" && chmod +x "$RBIN_NT/$vd_tool"
+done
+got=0; printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$WFSTUB:$RBIN_NT" "CLAUDE_PROJECT_DIR=$SCRATCH/nodewf" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vdnt.txt" || got=$?
+if [[ "$got" == 2 ]] && grep -qi 'cannot bound' "$SCRATCH/vdnt.txt"; then PASS=$((PASS+1)); echo "PASS VDNT1  blocking + no timeout tool -> fail closed (exit 2)"; else FAIL=$((FAIL+1)); echo "FAIL VDNT1  want exit 2 + 'cannot bound'; got exit $got: $(head -c 100 "$SCRATCH/vdnt.txt" | tr -d '\n')"; fi
+
+# VDST1 (S1) — the Stop hook carries an explicit outer timeout in settings.json.
+if jq -e '.hooks.Stop[0].hooks[0].timeout' "$REPO/.claude/settings.json" >/dev/null 2>&1; then PASS=$((PASS+1)); echo "PASS VDST1  Stop hook has explicit settings timeout"; else FAIL=$((FAIL+1)); echo "FAIL VDST1  Stop hook missing explicit timeout in settings.json"; fi
 # VD10: multiple failing checks are all counted.
 mkdir -p "$SCRATCH/nodebad2" && ( cd "$SCRATCH/nodebad2" && git init -q . \
   && printf '{"name":"x","version":"1.0.0","scripts":{"lint":"node -e \\"process.exit(1)\\"","test":"node -e \\"process.exit(1)\\""}}\n' > package.json \
@@ -291,11 +350,11 @@ mkdir -p "$SCRATCH/nodewatch" && ( cd "$SCRATCH/nodewatch" && git init -q . \
 vd13_start=$(date +%s); got=0
 printf '%s' '{"hook_event_name":"Stop"}' | env "PATH=$NPMSTUB:$RBIN" "CLAUDE_PROJECT_DIR=$SCRATCH/nodewatch" CLAUDE_VERIFY_BLOCK=1 bash "$HOOKS/verify-done.sh" >/dev/null 2>"$SCRATCH/vd13.txt" || got=$?
 vd13_wall=$(( $(date +%s) - vd13_start ))
-if [[ "$got" == 0 ]] && grep -qi 'watch' "$SCRATCH/vd13.txt" && grep -qi 'no verification' "$SCRATCH/vd13.txt" \
+if [[ "$got" == 2 ]] && grep -qi 'watch' "$SCRATCH/vd13.txt" && grep -qi 'no verification' "$SCRATCH/vd13.txt" \
    && [[ ! -s "$SCRATCH/npm-argv.txt" ]] && (( vd13_wall < 30 )); then
-  PASS=$((PASS+1)); echo "PASS VD13   watch-mode script skipped (npm never invoked), honest 'no verification'"
+  PASS=$((PASS+1)); echo "PASS VD13   watch-mode script skipped fast (npm never invoked); strict -> fail closed"
 else
-  FAIL=$((FAIL+1)); echo "FAIL VD13   want fast exit 0 + 'watch' + 'no verification' + npm-not-called; got exit $got wall=${vd13_wall}s npm-argv='$(tr '\n' ';' < "$SCRATCH/npm-argv.txt")': $(head -c 120 "$SCRATCH/vd13.txt" | tr -d '\n')"
+  FAIL=$((FAIL+1)); echo "FAIL VD13   want fast exit 2 + 'watch' + 'no verification' + npm-not-called; got exit $got wall=${vd13_wall}s npm-argv='$(tr '\n' ';' < "$SCRATCH/npm-argv.txt")': $(head -c 120 "$SCRATCH/vd13.txt" | tr -d '\n')"
 fi
 # VD14 (v8 A5 backstop): a non-obvious long runner is bounded by
 # CLAUDE_VERIFY_TIMEOUT_S and reported as a timeout failure, not a hang.
@@ -833,6 +892,24 @@ if [[ "$got" == 0 ]] && ! grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 
   PASS=$((PASS+1)); printf 'PASS %-6s valid empty JSON does not trip fail-open\n' FO3
 else
   FAIL=$((FAIL+1)); printf 'FAIL %-6s valid JSON should not log FAIL_OPEN (exit %s)\n' FO3 "$got"
+fi
+# FO4/FO5: scan-secrets reads several fields at once and used a raw `jq … ||
+# true`, so malformed input failed open SILENTLY (no FAIL_OPEN row). It must now
+# record the bypass like the other hooks, and stay silent on valid JSON.
+: > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' 'THIS IS NOT JSON' | bash "$HOOKS/scan-secrets.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]] && grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
+   && ! grep -qi 'THIS IS NOT JSON' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s scan-secrets malformed input fails open + logged\n' FO4
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s scan-secrets should log FAIL_OPEN on malformed input (exit %s)\n' FO4 "$got"
+fi
+: > "$SCRATCH/.claude/logs/hooks.log"
+got=0; printf '%s' '{"tool_input":{"content":"ok"}}' | bash "$HOOKS/scan-secrets.sh" >/dev/null 2>&1 || got=$?
+if [[ "$got" == 0 ]] && ! grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
+  PASS=$((PASS+1)); printf 'PASS %-6s scan-secrets valid JSON does not trip fail-open\n' FO5
+else
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s scan-secrets valid JSON should not log FAIL_OPEN (exit %s)\n' FO5 "$got"
 fi
 
 echo ""

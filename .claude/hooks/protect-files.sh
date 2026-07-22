@@ -46,6 +46,23 @@ BASE="${FILE_N##*/}"
 BASE_LC="${BASE,,}"
 SEG_LC="/${FILE_LC#/}/"
 
+# If the path is a symlink, evaluate its RESOLVED destination instead: an alias
+# (notes.txt -> .env, cfg -> .git/config) must not slip the basename/segment
+# rules below by pointing at a protected file. readlink -f is GNU/msys; realpath
+# is the macOS/BSD fallback; a resolution failure leaves the raw path in place
+# (still matched literally, erring toward deny/ask). The user-facing messages
+# keep the ORIGINAL $FILE so the operator sees the path they asked to edit.
+if [[ -L "$FILE_N" ]]; then
+  RESOLVED=$(readlink -f "$FILE_N" 2>/dev/null || realpath "$FILE_N" 2>/dev/null || true)
+  if [[ -n "$RESOLVED" ]]; then
+    FILE_N="${RESOLVED//\\//}"
+    FILE_LC="${FILE_N,,}"
+    BASE="${FILE_N##*/}"
+    BASE_LC="${BASE,,}"
+    SEG_LC="/${FILE_LC#/}/"
+  fi
+fi
+
 # --- Allowlist: committed env templates are editable documentation ------------
 # This is an exception to the `.env*` FILENAME deny (below) and to nothing else.
 # It deliberately does NOT short-circuit the hook: a file named `.env.example`
@@ -158,6 +175,15 @@ base_is "CODEOWNERS" ".gitattributes" && ASK=true
 # write here is a path to weaken hooks/permissions without approval.
 [[ "$FILE_LC" == *".claude/settings.json" || "$FILE_LC" == *".claude/settings.local.json" ]] && ASK=true
 has_segment ".claude" && has_segment "hooks" && ASK=true
+# Instruction / policy / evaluation sources: editing these changes the rules the
+# agent operates under, so they get the same approval gate as hooks and
+# settings (policy self-modification, review P1-3/P1-8). Covers the root policy
+# file, the enforcement doc, every skill body, and the hook/routing policy
+# fixtures that define the enforcement contracts.
+base_is "claude.md" && ASK=true
+{ has_segment ".claude" && base_is "enforcement.md"; } && ASK=true
+{ has_segment ".claude" && has_segment "skills"; } && ASK=true
+base_is "corpus.jsonl" "trigger-cases.yaml" "policy_consistency.py" && ASK=true
 
 if [[ "$ASK" == "true" ]]; then
   if check_override "protect-files"; then

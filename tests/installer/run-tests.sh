@@ -300,6 +300,258 @@ else
   bad FI8 "prep failed: no manifest to poison"
 fi
 
+# FI9 — version-stamp `date` failure must fail closed. Before the fix,
+# `generated_utc=$(date …)` sat inside an `echo` whose enclosing block still
+# exited 0, so a broken `date` published a project with an EMPTY timestamp.
+SHIM=$(make_shim date "T%H:%M:%SZ")
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi9 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI9 "$PDI" "$out" fi9
+else
+  bad FI9 "expected non-zero exit for version-stamp date failure; got 0"
+fi
+
+# FI10 — partial manifest via `find`: emit a SUBSET then exit nonzero. The
+# manifest enumeration ran behind process substitution, so a truncated list that
+# exited nonzero was invisible; the short manifest verified against itself and
+# published. Only the manifest call (`… -type f`) is hijacked.
+SHIM=$(mktemp -d "$SCRATCH/shim-findp-XXXX")
+REAL_FIND="$(command -v find)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally — $*/$@ expand when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *"-type f"*) echo CLAUDE.md; exit 1 ;; esac\n'
+  printf 'exec %q "$@"\n' "$REAL_FIND"
+} > "$SHIM/find"
+chmod +x "$SHIM/find"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi10 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI10 "$PDI" "$out" fi10
+else
+  bad FI10 "expected non-zero exit for partial-find manifest; got 0"
+fi
+
+# FI11 — partial manifest via `sort`: emit a subset then exit nonzero. Same
+# process-substitution blind spot on the consuming side of the pipe.
+SHIM=$(mktemp -d "$SCRATCH/shim-sortp-XXXX")
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'head -n1; exit 1\n'
+} > "$SHIM/sort"
+chmod +x "$SHIM/sort"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi11 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI11 "$PDI" "$out" fi11
+else
+  bad FI11 "expected non-zero exit for partial-sort manifest; got 0"
+fi
+
+# FI12 — partial manifest that even exits 0: a `find` that drops files but
+# succeeds must still fail closed, because the manifest omits required anchors
+# (here .claude/settings.json). Guards the exit-0 truncation the status checks
+# above cannot see.
+SHIM=$(mktemp -d "$SCRATCH/shim-find0-XXXX")
+REAL_FIND="$(command -v find)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *"-type f"*) echo CLAUDE.md; exit 0 ;; esac\n'
+  printf 'exec %q "$@"\n' "$REAL_FIND"
+} > "$SHIM/find"
+chmod +x "$SHIM/find"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi12 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI12 "$PDI" "$out" fi12
+else
+  bad FI12 "expected non-zero exit for anchor-incomplete manifest; got 0"
+fi
+
+# --- B3/B4: no-clobber, ownership-aware publish ------------------------------
+# A destination that appears AFTER the up-front existence check (a concurrent
+# actor) must never cause a nested publish or deletion of data we do not own.
+
+# FI13 — concurrent DIRECTORY at dest, created during manifest generation
+# (before the rename). Publish must refuse; the pre-existing dir must survive
+# and must not contain our tree at its root.
+SHIM=$(mktemp -d "$SCRATCH/shim-cdir-XXXX"); REAL_SHA="$(command -v sha256sum)"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'mkdir -p %q 2>/dev/null\n' "$PDI/fi13"
+  printf 'exec %q "$@"\n' "$REAL_SHA"
+} > "$SHIM/sha256sum"; chmod +x "$SHIM/sha256sum"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi13 2>&1); rc=$?
+if (( rc != 0 )) && [[ -d "$PDI/fi13" && ! -f "$PDI/fi13/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi13'" <<<"$out"; then
+  ok FI13 "concurrent dir: refused, no nested publish, dir preserved"
+else
+  bad FI13 "concurrent dir mishandled (rc=$rc)"
+fi
+
+# FI14 — tight race: dest is created (as a dir) at the instant of the final
+# rename, so mv nests our tree inside it. The post-publish root check must
+# detect the nesting and back out ONLY our nested subdir.
+SHIM=$(mktemp -d "$SCRATCH/shim-nest-XXXX"); REAL_MV="$(command -v mv)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally; $*/$@ expand when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *.new*|*settings.json*) exec %q "$@" ;; esac\n' "$REAL_MV"
+  printf 'mkdir -p %q 2>/dev/null\n' "$PDI/fi14"
+  printf 'exec %q "$@"\n' "$REAL_MV"
+} > "$SHIM/mv"; chmod +x "$SHIM/mv"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi14 2>&1); rc=$?
+if (( rc != 0 )) && [[ ! -f "$PDI/fi14/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi14'" <<<"$out"; then
+  ok FI14 "tight-race nest detected and backed out"
+else
+  bad FI14 "nested publish not detected (rc=$rc)"
+fi
+
+# FI15 — concurrent FILE at dest at rename time: mv fails. Cleanup must NOT
+# delete the file (we do not own it) — the pre-fix cleanup rm -rf'd any $dest.
+SHIM=$(mktemp -d "$SCRATCH/shim-cfile-XXXX"); REAL_MV="$(command -v mv)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *.new*|*settings.json*) exec %q "$@" ;; esac\n' "$REAL_MV"
+  printf 'touch %q 2>/dev/null\n' "$PDI/fi15"
+  printf 'exec %q "$@"\n' "$REAL_MV"
+} > "$SHIM/mv"; chmod +x "$SHIM/mv"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi15 2>&1); rc=$?
+if (( rc != 0 )) && [[ -f "$PDI/fi15" ]] \
+   && ! grep -qE "^✅ Project 'fi15'" <<<"$out"; then
+  ok FI15 "concurrent file preserved (not owned, not deleted)"
+else
+  bad FI15 "concurrent file mishandled (rc=$rc)"
+fi
+
+# FI16 — concurrent SYMLINK at dest (created before the rename). The pre-rename
+# guard rejects a symlinked destination rather than following it into its target.
+SHIM=$(mktemp -d "$SCRATCH/shim-clink-XXXX"); REAL_SHA="$(command -v sha256sum)"
+mkdir -p "$SCRATCH/fi16-target"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'ln -s %q %q 2>/dev/null\n' "$SCRATCH/fi16-target" "$PDI/fi16"
+  printf 'exec %q "$@"\n' "$REAL_SHA"
+} > "$SHIM/sha256sum"; chmod +x "$SHIM/sha256sum"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi16 2>&1); rc=$?
+if (( rc != 0 )) && [[ -L "$PDI/fi16" && ! -f "$SCRATCH/fi16-target/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi16'" <<<"$out"; then
+  ok FI16 "concurrent symlink refused, not followed"
+else
+  bad FI16 "concurrent symlink mishandled (rc=$rc)"
+fi
+
+# --- B5: stamp the bytes actually copied; detect dirty / HEAD race ------------
+# A committed git template built from the real fixture, so provenance can be
+# exercised (the mounted repo's gitdir is external and unusable in a container).
+make_git_tpl() { # make_git_tpl <dir>
+  local d="$1"; mkdir -p "$d/.claude"
+  cp "$TPL/CLAUDE.md" "$TPL/.gitignore" "$TPL/.gitattributes" "$d/"
+  cp -r "$TPL/.claude/hooks" "$TPL/.claude/skills" "$d/.claude/"
+  cp "$TPL/.claude/settings.json" "$TPL/.claude/ENFORCEMENT.md" "$d/.claude/"
+  git -C "$d" init -q
+  git -C "$d" add -A
+  git -C "$d" -c user.email=t@t.test -c user.name=t commit -qm init
+}
+
+# FI17 — a DIRTY template working tree must be recorded (a commit hash alone
+# does not describe uncommitted bytes), and the stamp must carry a digest of the
+# tree actually copied.
+GTPL="$SCRATCH/gtpl"; make_git_tpl "$GTPL"
+printf '\n# dirty tweak\n' >> "$GTPL/CLAUDE.md"
+out=$(ci "$PDI" "$GTPL" fi17 2>&1); rc=$?
+if (( rc == 0 )) \
+   && grep -q '^template_dirty=true$' "$PDI/fi17/.claude/.template-version" \
+   && grep -qE '^template_tree_sha256=[0-9a-f]{64}$' "$PDI/fi17/.claude/.template-version"; then
+  ok FI17 "dirty template recorded; tree digest stamped"
+else
+  bad FI17 "dirty/tree provenance not stamped (rc=$rc)"
+fi
+
+# FI18 — the template HEAD moves between the pre-copy capture and the post-copy
+# re-check: the stamp would otherwise mislabel the copied bytes, so fail closed.
+SHIM=$(mktemp -d "$SCRATCH/shim-head-XXXX"); REAL_GIT="$(command -v git)"; CTR="$SHIM/ctr"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally; expansions happen when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'if [[ "$*" == *"rev-parse HEAD"* ]]; then\n'
+  # shellcheck disable=SC2016
+  printf '  n=$(cat %q 2>/dev/null || echo 0); echo $((n+1)) > %q\n' "$CTR" "$CTR"
+  # shellcheck disable=SC2016
+  printf '  [[ "$n" == 0 ]] && echo 1111111111111111111111111111111111111111 || echo 2222222222222222222222222222222222222222\n'
+  printf '  exit 0\n'
+  printf 'fi\n'
+  printf 'exec %q "$@"\n' "$REAL_GIT"
+} > "$SHIM/git"; chmod +x "$SHIM/git"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi18 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI18 "$PDI" "$out" fi18
+else
+  bad FI18 "expected non-zero exit for template HEAD change; got 0"
+fi
+
+# --- B6/B7/B8: argument arity + status hasher/manifest validation ------------
+
+# PARITY — `--profile` with no value must fail fast, never loop. `shift 2` with
+# a single remaining positional used to spin forever (a 2s repro hit exit 124).
+if timeout 5 bash -c "source '$REPO/claude-init.sh' && CLAUDE_PROJECTS_DIR='$SCRATCH/parity' CLAUDE_TEMPLATE_DIR='$TPL' claude-init --profile" >/dev/null 2>&1; then
+  bad PARITY "--profile with no value should exit non-zero"
+else
+  prc=$?
+  (( prc == 124 )) && bad PARITY "--profile with no value HANGS (timed out)" \
+                   || ok  PARITY "--profile with no value refused, no hang"
+fi
+
+# STHASH — claude-template-status must fail VISIBLY when the hasher errors, not
+# silently mark every file "LOCALLY MODIFIED" (sha256sum was piped, exit lost).
+PDH="$SCRATCH/psh"; ci "$PDH" "$TPL" sh1 >/dev/null 2>&1
+SHIM=$(make_shim sha256sum "")   # fail every sha256sum
+sout=$(cd "$PDH/sh1" && env "PATH=$SHIM:$PATH" bash -c "source '$REPO/claude-init.sh' && claude-template-status" 2>&1); src=$?
+if (( src != 0 )); then ok STHASH "status fails visibly on broken hasher"; else bad STHASH "status masked hasher failure (exit 0): $(head -c 80 <<<"$sout")"; fi
+
+# STMANI — a tampered manifest with a path-traversal row must be REFUSED, never
+# used to hash an arbitrary file outside the project.
+PDM="$SCRATCH/psm"; ci "$PDM" "$TPL" sm1 >/dev/null 2>&1
+printf '%s  %s\n' "$(printf 'a%.0s' {1..64})" "../../../../etc/hostname" >> "$PDM/sm1/.claude/.template-manifest"
+mout=$(cd "$PDM/sm1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); mrc=$?
+if (( mrc != 0 )); then ok STMANI "status rejects traversal manifest path"; else bad STMANI "status followed unsafe manifest path (rc=$mrc): $(head -c 80 <<<"$mout")"; fi
+
+# STSYM — a manifest row whose path is a symlink must be refused (a symlink can
+# redirect the hash check at a file outside the project).
+PDS="$SCRATCH/pss"; ci "$PDS" "$TPL" ss1 >/dev/null 2>&1
+ln -s /etc/hostname "$PDS/ss1/evil-link"
+printf '%s  %s\n' "$(printf 'b%.0s' {1..64})" "evil-link" >> "$PDS/ss1/.claude/.template-manifest"
+yout=$(cd "$PDS/ss1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); yrc=$?
+if (( yrc != 0 )); then ok STSYM "status refuses symlinked manifest path"; else bad STSYM "status followed symlink row (rc=$yrc): $(head -c 80 <<<"$yout")"; fi
+
+# --- H5: install.sh honesty (chmod + wiring) ---------------------------------
+
+# IN1 — a valid-JSON settings.json that WIRES a hook not present here must be
+# rejected: a guardrail referenced but missing would otherwise install "clean".
+IND1="$SCRATCH/inst-unwired/.claude/hooks"; mkdir -p "$IND1"
+cp "$TPL/.claude/hooks/"*.sh "$IND1/"
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"D/.claude/hooks/absent-hook.sh"}]}]}}' > "$IND1/../settings.json"
+if ( cd "$IND1" && bash install.sh ) >/dev/null 2>&1; then
+  bad IN1 "install.sh accepted settings.json wiring a missing hook"
+else
+  ok IN1 "install.sh rejects settings.json wiring a missing hook"
+fi
+
+# IN2 — a chmod that fails must abort (was silently `|| true`); the +x bit is
+# what Claude Code uses to execute the hook, though the smoke tests run via bash.
+IND2="$SCRATCH/inst-chmod/.claude/hooks"; mkdir -p "$IND2"
+cp "$TPL/.claude/hooks/"*.sh "$IND2/"
+cp "$TPL/.claude/settings.json" "$IND2/../settings.json"
+CHSHIM=$(make_shim chmod "")
+if ( cd "$IND2" && env "PATH=$CHSHIM:$PATH" bash install.sh ) >/dev/null 2>&1; then
+  bad IN2 "install.sh ignored a chmod failure"
+else
+  ok IN2 "install.sh aborts on chmod failure"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1

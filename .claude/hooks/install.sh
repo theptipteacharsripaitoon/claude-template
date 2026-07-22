@@ -11,8 +11,17 @@ export CLAUDE_PROJECT_DIR
 
 echo "Installing Claude Code hooks..."
 
-# 1. Make all hooks executable.
-chmod +x ./*.sh 2>/dev/null || true
+# 1. Make all hooks executable — and FAIL if that did not take effect. The
+# smoke tests below invoke each hook via `bash x.sh`, which would pass even on
+# a read-only/noexec filesystem where the +x bit never landed and Claude Code
+# (which executes the hook directly) would silently never run it.
+if ! chmod +x ./*.sh 2>/dev/null; then
+  echo "  ✗ chmod failed — could not make hook scripts executable"
+  exit 1
+fi
+for h in ./*.sh; do
+  [[ -x "$h" ]] || { echo "  ✗ $h is not executable after chmod"; exit 1; }
+done
 echo "  ✓ Made hook scripts executable"
 
 # 2. Verify dependencies.
@@ -41,6 +50,27 @@ if [[ -f "$SETTINGS" ]]; then
   fi
 else
   echo "  ⚠ .claude/settings.json not found (expected at $SETTINGS)"
+fi
+
+# 3b. Wiring integrity: every hook WIRED in settings.json must exist here and be
+# executable, and the always-on guardrails must be wired. A profile may wire
+# FEWER hooks (minimal drops scan-secrets/check-diff-size/Stop), so validate the
+# wired SET rather than a fixed list — otherwise a valid-JSON settings.json that
+# references a missing or renamed hook installs "clean" with a guardrail inert.
+if [[ -f "$SETTINGS" ]]; then
+  WIRED=$(jq -r '.. | .command? // empty' "$SETTINGS" 2>/dev/null | grep -oE '[a-zA-Z0-9_-]+\.sh' | sort -u)
+  while IFS= read -r hookfile; do
+    [[ -z "$hookfile" ]] && continue
+    if [[ ! -f "./$hookfile" ]]; then
+      echo "  ✗ settings.json wires $hookfile, which is missing here"; exit 1
+    elif [[ ! -x "./$hookfile" ]]; then
+      echo "  ✗ settings.json wires $hookfile, which is not executable"; exit 1
+    fi
+  done <<< "$WIRED"
+  for required in block-destructive.sh protect-files.sh; do
+    grep -q "$required" "$SETTINGS" || { echo "  ✗ settings.json does not wire $required"; exit 1; }
+  done
+  echo "  ✓ settings.json wiring is intact"
 fi
 
 # 4. Smoke test: each hook runs cleanly on empty input.

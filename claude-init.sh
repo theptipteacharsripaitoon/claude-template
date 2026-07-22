@@ -43,7 +43,12 @@ claude-init() {
   while (( $# > 0 )); do
     case "$1" in
       --dry-run) dry_run=1; shift ;;
-      --profile) profile="${2:-}"; shift 2 ;;
+      --profile)
+        # Validate arity BEFORE `shift 2`: with a single remaining positional,
+        # `shift 2` is a no-op that returns nonzero, so `while (( $# > 0 ))`
+        # never terminates — a bare `claude-init --profile` used to hang.
+        [[ $# -ge 2 ]] || { echo "✗ --profile needs a value (minimal|standard|strict|team|security-sensitive)."; return 1; }
+        profile="$2"; shift 2 ;;
       --profile=*) profile="${1#--profile=}"; shift ;;
       -*)
         echo "✗ Unknown option '$1'. Usage: claude-init [--dry-run] [--profile P] <name>"
@@ -296,11 +301,33 @@ claude-init() {
         ;;
     esac
 
-    # Version stamp — written once, atomically.
+    # Provenance re-checks against the SOURCE template, done AFTER the copy so
+    # the stamp describes the bytes actually taken. tpl_commit was captured
+    # up front (before the copy); if HEAD moved since, a checkout could have
+    # mixed two commits' files into the copy — fail closed rather than stamp a
+    # commit the bytes may not match. Record dirtiness too, so a commit hash is
+    # never mistaken for a complete description of an uncommitted working tree.
+    # Only re-check when the up-front capture actually resolved a commit (a
+    # non-git template records "unknown" and has nothing to re-verify).
+    local template_dirty=false
+    if [[ "$tpl_commit" != "unknown" ]]; then
+      local tpl_commit_now
+      tpl_commit_now=$(git -C "$TEMPLATE" rev-parse HEAD 2>/dev/null || echo "unknown")
+      [[ "$tpl_commit_now" == "$tpl_commit" ]] || exit 1
+      [[ -n "$(git -C "$TEMPLATE" status --porcelain 2>/dev/null)" ]] && template_dirty=true
+    fi
+
+    # Version stamp — written once, atomically. `date` is captured into a
+    # variable and checked FIRST: embedded in the `echo` (as it was) a failing
+    # `date` left generated_utc="" while the block still exited 0 and published.
+    local stamp_utc
+    stamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ) || exit 1
+    [[ -n "$stamp_utc" ]] || exit 1
     {
       echo "template_commit=$tpl_commit"
+      echo "template_dirty=$template_dirty"
       echo "profile=$profile"
-      echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "generated_utc=$stamp_utc"
     } > "$tmp/.claude/.template-version" || exit 1
 
     # Manifest generation — sha256sum is captured directly (no pipe) so its
@@ -312,12 +339,18 @@ claude-init() {
     # so claude-template-status's substring parser and `sha256sum --check`
     # both accept it consistently across platforms (native sha256sum on
     # MSYS Windows prefixes paths with `*` for binary mode).
+    # Enumerate the managed files with the producer status OBSERVED. The old
+    # form (`find … | sort` inside `< <(process substitution)`) hid BOTH exit
+    # codes: a find or sort that emitted a partial list and then failed produced
+    # a short-but-nonempty manifest that verified against itself and published.
+    # Capturing each stage in its own command substitution propagates its exit.
+    local mf_find mf_sorted
+    mf_find=$(cd "$tmp" && find CLAUDE.md .gitignore .gitattributes \
+      .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
+      -type f) || exit 1
+    mf_sorted=$(LC_ALL=C sort <<<"$mf_find") || exit 1
     local mf_files=()
-    while IFS= read -r f; do mf_files+=("$f"); done < <(
-      cd "$tmp" && find CLAUDE.md .gitignore .gitattributes \
-        .claude/hooks .claude/skills .claude/settings.json .claude/ENFORCEMENT.md \
-        -type f 2>/dev/null | LC_ALL=C sort
-    )
+    while IFS= read -r f; do [[ -n "$f" ]] && mf_files+=("$f"); done <<<"$mf_sorted"
     [[ "${#mf_files[@]}" -gt 0 ]] || exit 1
     : > "$tmp/.claude/.template-manifest" || exit 1
     local mf_raw mf_hash
@@ -331,6 +364,18 @@ claude-init() {
     done
     [[ -s "$tmp/.claude/.template-manifest" ]] || exit 1
 
+    # Block a TRUNCATED manifest even when the producer exited 0: every required
+    # anchor must have a row, and the hooks/ and skills/ subtrees must each
+    # contribute at least one. A partial enumeration cannot silently drop
+    # managed files (which claude-template-status would then never track).
+    local anchor
+    for anchor in CLAUDE.md .gitignore .gitattributes \
+                  .claude/settings.json .claude/ENFORCEMENT.md; do
+      grep -qE "  ${anchor}\$" "$tmp/.claude/.template-manifest" || exit 1
+    done
+    grep -qE '  \.claude/hooks/' "$tmp/.claude/.template-manifest" || exit 1
+    grep -qE '  \.claude/skills/' "$tmp/.claude/.template-manifest" || exit 1
+
     # Reject any manifest row with a blank hash (belt-and-braces: even if
     # sha256sum somehow returns 0 with garbage output, blank hashes would
     # make claude-template-status silently "unchanged" every file).
@@ -342,13 +387,36 @@ claude-init() {
     ( cd "$tmp" && sha256sum --check --quiet .claude/.template-manifest \
         2>/dev/null ) || exit 1
 
-    # Final publish — atomic within the same filesystem.
+    # Stamp a digest of the bytes actually copied — a single hash over the
+    # per-file manifest — so provenance is the TREE, not merely a commit label
+    # (which a dirty or moved template would misrepresent). Appended to the
+    # version file, which the manifest deliberately does not cover.
+    local tree_sha
+    tree_sha=$(sha256sum "$tmp/.claude/.template-manifest") || exit 1
+    tree_sha="${tree_sha%% *}"
+    [[ ${#tree_sha} -eq 64 ]] || exit 1
+    printf 'template_tree_sha256=%s\n' "$tree_sha" >> "$tmp/.claude/.template-version" || exit 1
+
+    # Final publish. A plain `mv "$tmp" "$dest"` is NOT safe on its own: if
+    # another actor created $dest (as a directory) in the window since the
+    # up-front existence check, mv nests our tree INSIDE it ($dest/<tmpbase>)
+    # and returns 0 — a false success. Portably (no GNU-only `mv -T`): refuse a
+    # destination that exists now, rename, then VERIFY our tree landed at the
+    # destination ROOT; if a tighter race still nested it, back out ONLY our own
+    # subdirectory — never the other actor's $dest.
+    local tmpbase="${tmp##*/}"
+    [[ -e "$dest" || -L "$dest" ]] && exit 1
     mv "$tmp" "$dest" || exit 1
+    if [[ ! -f "$dest/CLAUDE.md" || ! -f "$dest/.claude/settings.json" ]]; then
+      [[ -d "$dest/$tmpbase" ]] && rm -rf "${dest:?}/$tmpbase"
+      exit 1
+    fi
   ); then
     rm -rf "$tmp" 2>/dev/null
-    # If the mv partially populated $dest, tear it back down; the destination
-    # must not exist after a failed bootstrap.
-    [[ -e "$dest" ]] && rm -rf "$dest"
+    # Do NOT remove $dest here. This invocation only ever creates $dest via the
+    # atomic rename above, and a nested-race subdir is already backed out inside
+    # the subshell. A $dest that exists at this point belongs to another actor —
+    # removing it would destroy data this invocation does not own.
     echo "✗ Bootstrap failed after staging — nothing was published at $dest."
     return 1
   fi
@@ -392,14 +460,40 @@ claude-template-status() {
   fi
   echo "== $(tr '\n' ' ' < "$version")"
   local unchanged=0 modified=0 miss_count=0
-  local hash path current
+  local hash path current seen="" hout
   while IFS= read -r line; do
     hash="${line%%  *}"; path="${line#*  }"
+    # Validate each row before trusting it: a tampered manifest must never be
+    # able to steer the hash check at a file outside the project. Refuse the
+    # whole report (do not partially process) on any malformed hash or unsafe
+    # path — grammar, absolute, traversal, symlink, and duplicate.
+    if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "✗ Manifest has a malformed hash row — refusing to validate." >&2
+      return 1
+    fi
+    case "$path" in
+      /*)                          echo "✗ Manifest path is absolute ('$path') — refusing." >&2; return 1 ;;
+      ".."|"../"*|*"/../"*|*"/..")  echo "✗ Manifest path escapes the project ('$path') — refusing." >&2; return 1 ;;
+    esac
+    if [[ -L "$path" ]]; then
+      echo "✗ Manifest path is a symlink ('$path') — refusing." >&2
+      return 1
+    fi
+    case "$seen" in
+      *"|$path|"*) echo "✗ Manifest lists '$path' more than once — refusing." >&2; return 1 ;;
+    esac
+    seen="$seen|$path|"
     if [[ ! -f "$path" ]]; then
       echo "MISSING            $path"
       miss_count=$((miss_count+1))
     else
-      current=$(sha256sum "$path" | cut -d' ' -f1)
+      # Capture the hasher exit (no pipe): a broken sha256sum must fail visibly,
+      # not silently report every file "LOCALLY MODIFIED".
+      hout=$(sha256sum "$path") || {
+        echo "✗ sha256sum failed on '$path' — cannot compute drift. Aborting." >&2
+        return 1
+      }
+      current="${hout%% *}"
       if [[ "$current" == "$hash" ]]; then
         unchanged=$((unchanged+1))
       else

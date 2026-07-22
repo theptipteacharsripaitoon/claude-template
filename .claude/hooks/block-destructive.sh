@@ -43,7 +43,11 @@ CMD_MATCH=${CMD_MATCH//$'\n'/ }       # bare LF
 # or long (--recursive [--force]), with other flags interleaved — anchored at a
 # command position so substrings of other words (confirm, npm) can never match.
 # The dangerous-target patterns below append what the recursion aims at.
-RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*'
+# A single rm option token. The optional `(=[^[:space:]]*)?` covers
+# value-bearing long options (`--interactive=never`, `--preserve-root=all`):
+# without it the `=value` broke the flag run and `rm --interactive=never -rf /`
+# slipped the recursive-rm patterns entirely (H2).
+RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*(=[^[:space:]]*)?'
 # Command-word spellings, two alternatives:
 #  1. bare `rm` — the char before it may be start-of-string, a shell separator,
 #     `/` (path prefix: /bin/rm) or `\` (alias escape: \rm); an optional
@@ -55,6 +59,18 @@ RM_WORD="((^|[[:space:];|&/\\])rm[\"']?|(^|[[:space:];|&])[\"']rm[\"'])"
 # A trailing `(--[[:space:]]+)?` lets the idiomatic end-of-options marker sit
 # between the flags and the target (`rm -rf -- /`).
 RM_REC="${RM_WORD}[[:space:]]+(${RM_FLAG}[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+${RM_FLAG})*[[:space:]]+(--[[:space:]]+)?"
+
+# Command-position `git`, tolerating a run of GLOBAL options before the
+# subcommand. Without this the destructive git patterns required the subcommand
+# to sit immediately after `git`, so `git -C d reset --hard`, `git -c k=v clean
+# -fd`, and `git --git-dir=… push --force` all slipped the deny tier (H1). This
+# is the same generic option-run the protected-branch commit check already uses:
+# a run of `-x`/`--xxx` options, each optionally `=value` or followed by one
+# non-dash value token — covering `-C dir`, `-c k=v`, `--git-dir=…`,
+# `--work-tree dir`, `--no-pager`, and future globals. Anchored at a command
+# position so a word ending in `git` (e.g. `mygit`) cannot match. Ends in
+# `[[:space:]]+` so a subcommand token is appended directly: "${GIT_CMD}reset".
+GIT_CMD='(^|[[:space:];|&/\\])git([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?([[:space:]]+[^-[:space:]]+)?)*[[:space:]]+'
 
 # shellcheck disable=SC2016  # single quotes are intentional: these are regexes,
 # the literal '\$HOME' must NOT be shell-expanded.
@@ -101,18 +117,21 @@ DESTRUCTIVE_PATTERNS=(
   'curl[[:space:]]+.*\|[[:space:]]*(sudo[[:space:]]+)?(ba)?sh'  # curl ... | sh
   'wget[[:space:]]+.*\|[[:space:]]*(sudo[[:space:]]+)?(ba)?sh'  # wget ... | sh
 
-  # Git destructive
-  'git[[:space:]]+push[[:space:]]+.*--force'              # force push
-  'git[[:space:]]+push[[:space:]]+.*-f([[:space:]]|$)'    # short -f
+  # Git destructive. Each uses ${GIT_CMD} so a run of global options between
+  # `git` and the subcommand (-C, -c, --git-dir, --work-tree, --no-pager, …)
+  # cannot hide it (H1). SC2016 is not a concern here: these are double-quoted
+  # precisely so ${GIT_CMD} expands; no other $ appears.
+  "${GIT_CMD}push[[:space:]]+.*--force"                   # force push
+  "${GIT_CMD}push[[:space:]]+.*-f([[:space:]]|$)"         # short -f
   # force via +refspec, incl. a quoted refspec: git push origin +main / "+main"
-  "git[[:space:]]+push[[:space:]]+.*[[:space:]][\"']?\\+[A-Za-z0-9_/]"
-  'git[[:space:]]+reset[[:space:]]+--hard'                # hard reset
+  "${GIT_CMD}push[[:space:]]+.*[[:space:]][\"']?\\+[A-Za-z0-9_/]"
+  "${GIT_CMD}reset[[:space:]]+--hard"                     # hard reset
   # clean needs BOTH -f and -d, in either order, same cluster or split
-  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*(f[a-zA-Z]*d|d[a-zA-Z]*f)'
-  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d'
-  'git[[:space:]]+clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f'
-  'git[[:space:]]+filter-branch'                          # history rewrite
-  'git[[:space:]]+update-ref[[:space:]]+-d'               # delete ref
+  "${GIT_CMD}clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*(f[a-zA-Z]*d|d[a-zA-Z]*f)"
+  "${GIT_CMD}clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d"
+  "${GIT_CMD}clean([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*d[a-zA-Z]*([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*f"
+  "${GIT_CMD}filter-branch"                               # history rewrite
+  "${GIT_CMD}update-ref[[:space:]]+-d"                    # delete ref
 
   # Database. DELETE table-name class includes . [ ] so schema-qualified and
   # bracketed forms (dbo.Users, [dbo].[Users]) are covered; a WHERE clause still
