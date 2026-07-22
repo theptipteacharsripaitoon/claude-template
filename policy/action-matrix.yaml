@@ -1,0 +1,181 @@
+# Machine-readable action contract for the claude-template guardrails.
+#
+# This is the SINGLE SOURCE OF TRUTH for "what happens when the agent tries to
+# do X". CLAUDE.md prose, the enforcement hooks, the hook corpus, and the
+# realistic-session expectations must all AGREE with the decision recorded here.
+# `tests/policy_matrix.py` validates that agreement and fails on any drift or
+# contradiction (review finding P1-8: policy, skills, hooks, and evaluations
+# previously lacked one contract, so they disagreed).
+#
+# Fields per operation:
+#   id                        stable kebab-case slug
+#   description               what the operation is, in one line
+#   risk                      low | medium | high            (CLAUDE.md §13)
+#   decision                  allow | ask | deny
+#   current_message_approval  required | not-required
+#                             — whether an in-chat "yes" in the CURRENT message
+#                               is needed before the action proceeds
+#   executor                  claude | user
+#                             — who actually performs it (deny/ask-for-secrets
+#                               route to the user; allow/ask-approved let Claude)
+#   waiver                    true | false
+#                             — may a DOCUMENTED waiver relax it? secret and
+#                               verification gates are non-waivable
+#   owner                     canonical prose owner (the doc that defines it)
+#   enforced_by               hook filename, "prose", or "claude-code-permissions"
+#
+# Decisions map to the hook exit contract: deny = block (exit 2); ask =
+# permissionDecision "ask"; allow = no opinion (exit 0).
+
+version: 1
+
+operations:
+  # --- Destructive local commands (deny; the user runs them) -----------------
+  - id: destructive-local-command
+    description: rm -rf on dangerous targets, git reset --hard, git clean -fd, DROP/TRUNCATE/DELETE-without-WHERE, fork bomb, dd-to-device, mkfs, chmod -R 777
+    risk: high
+    decision: deny
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §2
+    enforced_by: block-destructive.sh
+
+  - id: force-push
+    description: git push --force / --force-with-lease / +refspec (history-rewriting remote mutation)
+    risk: high
+    decision: deny
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §2
+    enforced_by: block-destructive.sh
+
+  # --- Remote mutation: plain push (ask) -------------------------------------
+  - id: remote-mutation-push
+    description: plain git push and other non-forced remote mutations
+    risk: high
+    decision: ask
+    current_message_approval: required
+    executor: claude
+    waiver: false
+    owner: CLAUDE.md §2
+    # Enforced by Claude Code's own permission prompt, NOT block-destructive, to
+    # avoid a double prompt. Residual: pre-allowlisting `Bash(git push*)` in
+    # settings would bypass §2 — the hook README and ENFORCEMENT warn against it.
+    enforced_by: claude-code-permissions
+
+  # --- Protected-branch commit (ask) -----------------------------------------
+  - id: protected-branch-commit
+    description: git commit while on main / master / production / release/*
+    risk: high
+    decision: ask
+    current_message_approval: required
+    executor: claude
+    waiver: false
+    owner: CLAUDE.md §2
+    enforced_by: block-destructive.sh
+
+  # --- Dependencies: immutable restore (allow) vs mutable change (ask) --------
+  - id: dependency-restore-immutable
+    description: reinstall an already-committed manifest/lockfile with NO new package (npm ci, pip install -r, uv sync, poetry/bundle/composer install, go mod download, cargo fetch)
+    risk: low
+    decision: allow
+    current_message_approval: not-required
+    executor: claude
+    waiver: false
+    owner: CLAUDE.md §7 Supply Chain
+    enforced_by: block-destructive.sh
+
+  - id: dependency-change-mutable
+    description: install/add/remove/upgrade a specific package, or any command that can rewrite the lockfile with new resolutions (npm install <pkg>, bare npm install, yarn/pnpm/bun add, pip install <pkg>, uv/poetry/cargo/gem/composer add|remove|update, global tool installs)
+    risk: medium
+    decision: ask
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §2 + §7
+    enforced_by: block-destructive.sh
+
+  # --- Protected / sensitive file writes -------------------------------------
+  - id: secret-or-git-internal-edit
+    description: writing .env*, secrets/credentials files, private keys, or .git internals
+    risk: high
+    decision: deny
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §2 + §7
+    enforced_by: protect-files.sh
+
+  - id: protected-file-edit
+    description: CI/CD, infra (terraform/pulumi/cdk/k8s-prod), migrations, lockfiles, .github/actions, CODEOWNERS, .gitattributes, Claude settings, hooks
+    risk: high
+    decision: ask
+    current_message_approval: required
+    executor: claude
+    waiver: false
+    owner: CLAUDE.md §2
+    enforced_by: protect-files.sh
+
+  - id: policy-self-modification
+    description: editing CLAUDE.md, .claude/ENFORCEMENT.md, .claude/skills/**, or the hook/routing policy fixtures
+    risk: high
+    decision: ask
+    current_message_approval: required
+    executor: claude
+    waiver: false
+    owner: CLAUDE.md §2
+    enforced_by: protect-files.sh
+
+  - id: secret-shaped-write
+    description: writing content matching a secret pattern (cloud/API/VCS keys, private-key blocks)
+    risk: high
+    decision: deny
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §7
+    enforced_by: scan-secrets.sh
+
+  # --- Tests: quarantine (allowed, tracked) vs delete-to-green (deny) ---------
+  - id: test-quarantine
+    description: skip/xfail a flaky test WITH a tracked justification (ticket ref + revisit trigger), pending a fix
+    risk: medium
+    decision: allow
+    current_message_approval: not-required
+    executor: claude
+    waiver: true
+    owner: CLAUDE.md §10 + testing skill
+    enforced_by: prose
+
+  - id: test-deletion-to-green
+    description: deleting, skipping, or weakening a test to make CI pass without fixing the cause
+    risk: high
+    decision: deny
+    current_message_approval: required
+    executor: user
+    waiver: false
+    owner: CLAUDE.md §2 + §10
+    enforced_by: prose
+
+  # --- Release gates: secret + verification non-waivable ----------------------
+  - id: release-secret-and-verification
+    description: the secret-cleanliness scan and the required verification matrix at release time
+    risk: high
+    decision: deny            # release is blocked if either fails
+    current_message_approval: required
+    executor: user
+    waiver: false             # NON-waivable
+    owner: release-readiness skill
+    enforced_by: prose
+
+  - id: release-other-checklist
+    description: non-secret, non-verification release-readiness items (changelog, version tag, docs)
+    risk: medium
+    decision: ask
+    current_message_approval: required
+    executor: claude
+    waiver: true              # waivable with a documented justification
+    owner: release-readiness skill
+    enforced_by: prose
