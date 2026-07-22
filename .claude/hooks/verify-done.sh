@@ -62,31 +62,60 @@ fi
 # Customize commands per project. These are conservative defaults that try
 # common conventions; missing commands are skipped silently.
 
-# Per-check wall-clock budget (v8). A blocking-mode Stop hook with no timeout
-# hangs forever if a project's test script enters watch mode (`vitest --watch`,
-# `jest --watch`, `next dev`, nodemon). We detect obvious watchers up front
-# (script_is_watch) and, as a backstop, bound every check with `timeout` so a
-# non-obvious long-runner cannot wedge the session. Distinguish three outcomes:
-# pass (0), timeout (124 → treated as a failure here, in blocking mode), and a
-# real non-zero failure.
-VERIFY_TIMEOUT_S=${CLAUDE_VERIFY_TIMEOUT_S:-300}
+# Per-check AND aggregate wall-clock budgets (v9). A blocking-mode Stop hook
+# that runs an undetected watcher (`vitest --watch`, `next dev`, nodemon) — or a
+# genuinely slow suite — would otherwise wedge the session. We detect obvious
+# watchers up front (script_is_watch) and, as a backstop, bound every check with
+# a timeout AND cap the TOTAL so N ecosystems cannot multiply into N×per-check.
+VERIFY_TIMEOUT_S=${CLAUDE_VERIFY_TIMEOUT_S:-300}              # per check
+VERIFY_TOTAL_TIMEOUT_S=${CLAUDE_VERIFY_TOTAL_TIMEOUT_S:-600}  # aggregate, all checks
+VERIFY_KILL_AFTER_S=${CLAUDE_VERIFY_KILL_AFTER_S:-10}         # TERM->KILL grace
+
+# Portable bounding tool: GNU coreutils `timeout` (Linux / Git Bash) or
+# `gtimeout` (macOS via `brew install coreutils`).
+TIMEOUT_BIN=""
+if command -v timeout >/dev/null 2>&1; then TIMEOUT_BIN=timeout
+elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_BIN=gtimeout
+fi
+
+# We are past the reminder-mode early return, so this is BLOCKING mode. Strict
+# verification must be able to bound every check; without a timeout tool a
+# watch/serve script we failed to detect would hang forever. "Cannot verify
+# safely" is not "verified" — fail closed rather than run unbounded.
+if [[ -z "$TIMEOUT_BIN" ]]; then
+  echo "" >&2
+  echo "🛑 Definition of Done: cannot bound verification — no 'timeout' or" >&2
+  echo "   'gtimeout' is available, so a hung check could wedge the session." >&2
+  echo "   Refusing to certify in blocking mode. Install coreutils, or run the" >&2
+  echo "   project's checks manually (CLAUDE.md §14/§16)." >&2
+  exit 2
+fi
+
+START_EPOCH=$(date +%s 2>/dev/null || echo 0)
 
 run_check() {
   # Executes the remaining args DIRECTLY as an argument vector — never eval
-  # (CLAUDE.md §7: no eval, even on internally-built strings; word-splitting
-  # surprises are a maintenance hazard the vector form cannot have).
+  # (CLAUDE.md §7). Bounded by the SMALLER of the per-check limit and the
+  # remaining aggregate budget; a check that would begin past the deadline is
+  # skipped and counted as a failure. TERM first, then KILL after a grace
+  # period, so a child that ignores TERM cannot linger.
   local name="$1"; shift
-  local rc=0
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "${VERIFY_TIMEOUT_S}s" "$@" >/dev/null 2>&1 || rc=$?
-  else
-    "$@" >/dev/null 2>&1 || rc=$?
+  local rc=0 now elapsed remaining budget
+  now=$(date +%s 2>/dev/null || echo "$START_EPOCH")
+  elapsed=$(( now - START_EPOCH ))
+  remaining=$(( VERIFY_TOTAL_TIMEOUT_S - elapsed ))
+  if (( remaining <= 0 )); then
+    echo "   ✗ $name SKIPPED — aggregate verification budget (${VERIFY_TOTAL_TIMEOUT_S}s) exhausted" >&2
+    return 1
   fi
+  budget=$VERIFY_TIMEOUT_S
+  (( remaining < budget )) && budget=$remaining
+  "$TIMEOUT_BIN" -k "${VERIFY_KILL_AFTER_S}s" "${budget}s" "$@" >/dev/null 2>&1 || rc=$?
   if (( rc == 0 )); then
     echo "   ✓ $name" >&2
     return 0
   elif (( rc == 124 )); then
-    echo "   ✗ $name TIMED OUT after ${VERIFY_TIMEOUT_S}s — likely a watch/serve script; run '$*' manually or set CLAUDE_VERIFY_TIMEOUT_S" >&2
+    echo "   ✗ $name TIMED OUT after ${budget}s — likely a watch/serve script; run '$*' manually or set CLAUDE_VERIFY_TIMEOUT_S" >&2
     return 1
   else
     echo "   ✗ $name FAILED — run '$*' to see details" >&2
@@ -100,6 +129,13 @@ run_check() {
 script_is_watch() {
   local key="$1" body
   body=$(jq -r --arg k "$key" '.scripts[$k] // ""' package.json 2>/dev/null)
+  # Neutralise FINITE forms a broad watcher regex would wrongly catch, BEFORE
+  # the test below: `--watch=false` / `--watchAll=false` explicitly disable
+  # watch, and `vite build` is a finite build (only bare `vite` and
+  # `vite dev|serve|preview` watch). Without this, `vitest --watch=false` and a
+  # `vite build` step were skipped as "watchers" and never verified.
+  body=$(printf '%s' "$body" | sed -E 's/--watch(All)?[[:space:]=]+(false|0)//g')
+  body=$(printf '%s' "$body" | sed -E 's/(^|[[:space:]])vite[[:space:]]+build([[:space:]]|$)/ /g')
   printf '%s' "$body" | grep -qE -- '(--watch|--watchAll|--serve|(^| )-w( |$)|nodemon|(^| )watch( |$)|next[[:space:]]+dev|vite([[:space:]]|$))'
 }
 
@@ -194,14 +230,16 @@ if (( FAILED > 0 )); then
 fi
 
 if (( RAN == 0 )); then
-  # Code changed but no checker was discovered/installed. This is NOT success —
-  # report it honestly so "no checks ran" is never mistaken for "checks passed".
+  # Code changed but NO checker could run (none discovered, or its toolchain is
+  # absent). This is BLOCKING mode (reminder mode returned earlier), so "cannot
+  # verify" must not be certified as "verified" — fail closed. The user can run
+  # the checks manually, configure a checker, or override for the session.
   echo "" >&2
-  echo "⚠️  No verification commands could be run for this repo (no ecosystem" >&2
-  echo "   checker was found, or its toolchain is not installed here)." >&2
-  echo "   Code changed but nothing was verified — run the project's checks manually" >&2
-  echo "   before declaring done (CLAUDE.md §14/§16)." >&2
-  exit 0
+  echo "🛑 Definition of Done: code changed but no verification command could run" >&2
+  echo "   (no ecosystem checker was found, or its toolchain is not installed here)." >&2
+  echo "   Run the project's checks manually, add a checker, or override for this" >&2
+  echo "   session (CLAUDE.md §14/§16). Refusing to certify." >&2
+  exit 2
 fi
 
 echo "✓ All $RAN verification check(s) passed." >&2
