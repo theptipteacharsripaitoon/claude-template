@@ -200,6 +200,36 @@ def check_websecurity_ratelimit_complete() -> None:
         )
 
 
+def check_matrix_prose_alignment() -> None:
+    """Prose must agree with policy/action-matrix.yaml on the resolved
+    contradictions (P1-8): flaky tests QUARANTINE (never delete-to-green),
+    protected-branch commits are ASK (not flatly Forbidden), and the release
+    secret + verification gates are NON-WAIVABLE."""
+    claude = read(ROOT / "CLAUDE.md")
+    # C4 — §10 must not offer deletion as a flaky-test remedy.
+    for i, line in enumerate(claude.splitlines(), 1):
+        lo = line.lower()
+        if "flaky test" in lo and "delete it" in lo and "never delete" not in lo:
+            failures.append(
+                f"[matrix-prose] CLAUDE.md:{i}: flaky-test line offers deletion; "
+                f"matrix says quarantine, not delete-to-green"
+            )
+    # C3 — §11 must not list direct commits to protected branches as flatly Forbidden.
+    m = re.search(r"\*\*Forbidden:\*\*[^\n]*", claude)
+    if m and "direct commits to" in m.group(0):
+        failures.append(
+            "[matrix-prose] CLAUDE.md §11: protected-branch commits listed as "
+            "Forbidden; matrix says ask (with confirmation)"
+        )
+    # C5 — release-readiness must mark the secret + verification gates non-waivable.
+    rr = SKILLS / "release-readiness" / "SKILL.md"
+    if rr.exists() and "non-waivable" not in read(rr).lower():
+        failures.append(
+            "[matrix-prose] release-readiness: secret + verification gates not "
+            "marked non-waivable"
+        )
+
+
 def main() -> int:
     check_token_prefix_ban()
     check_no_auto_revert()
@@ -208,6 +238,7 @@ def main() -> int:
     check_airflow_version_scoped()
     check_db_migrations_engine_scoped()
     check_websecurity_ratelimit_complete()
+    check_matrix_prose_alignment()
     if failures:
         print("policy_consistency: FAILURES")
         for f in failures:
