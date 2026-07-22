@@ -145,11 +145,32 @@ def check_hook_readme_sql_consistency() -> None:
         )
 
 
+# --- 5. Version-sensitive skills must scope their guidance ------------------
+def check_airflow_version_scoped() -> None:
+    """The airflow skill must give Airflow-3-aware guidance: a version scope,
+    Task SDK imports (airflow.sdk), get_current_context(), Assets (not only the
+    renamed-away Datasets), and the Deadline-Alerts replacement for removed
+    SLAs. Guards the P1-7 regression where the skill described only Airflow 2.x
+    APIs and would generate version-invalid DAGs on an Airflow 3 project."""
+    skill = SKILLS / "airflow" / "SKILL.md"
+    if not skill.exists():
+        return
+    low = read(skill).lower()
+    required = ("airflow 3", "airflow.sdk", "get_current_context", "assets", "deadline alert")
+    missing = [r for r in required if r not in low]
+    if missing:
+        failures.append(
+            f"[airflow-version] {skill.relative_to(ROOT)}: "
+            f"missing Airflow-3 guidance ({', '.join(missing)})"
+        )
+
+
 def main() -> int:
     check_token_prefix_ban()
     check_no_auto_revert()
     check_no_skip_to_green()
     check_hook_readme_sql_consistency()
+    check_airflow_version_scoped()
     if failures:
         print("policy_consistency: FAILURES")
         for f in failures:
