@@ -527,6 +527,31 @@ printf '%s  %s\n' "$(printf 'b%.0s' {1..64})" "evil-link" >> "$PDS/ss1/.claude/.
 yout=$(cd "$PDS/ss1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); yrc=$?
 if (( yrc != 0 )); then ok STSYM "status refuses symlinked manifest path"; else bad STSYM "status followed symlink row (rc=$yrc): $(head -c 80 <<<"$yout")"; fi
 
+# --- H5: install.sh honesty (chmod + wiring) ---------------------------------
+
+# IN1 — a valid-JSON settings.json that WIRES a hook not present here must be
+# rejected: a guardrail referenced but missing would otherwise install "clean".
+IND1="$SCRATCH/inst-unwired/.claude/hooks"; mkdir -p "$IND1"
+cp "$TPL/.claude/hooks/"*.sh "$IND1/"
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"D/.claude/hooks/absent-hook.sh"}]}]}}' > "$IND1/../settings.json"
+if ( cd "$IND1" && bash install.sh ) >/dev/null 2>&1; then
+  bad IN1 "install.sh accepted settings.json wiring a missing hook"
+else
+  ok IN1 "install.sh rejects settings.json wiring a missing hook"
+fi
+
+# IN2 — a chmod that fails must abort (was silently `|| true`); the +x bit is
+# what Claude Code uses to execute the hook, though the smoke tests run via bash.
+IND2="$SCRATCH/inst-chmod/.claude/hooks"; mkdir -p "$IND2"
+cp "$TPL/.claude/hooks/"*.sh "$IND2/"
+cp "$TPL/.claude/settings.json" "$IND2/../settings.json"
+CHSHIM=$(make_shim chmod "")
+if ( cd "$IND2" && env "PATH=$CHSHIM:$PATH" bash install.sh ) >/dev/null 2>&1; then
+  bad IN2 "install.sh ignored a chmod failure"
+else
+  ok IN2 "install.sh aborts on chmod failure"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1
