@@ -367,6 +367,82 @@ else
   bad FI12 "expected non-zero exit for anchor-incomplete manifest; got 0"
 fi
 
+# --- B3/B4: no-clobber, ownership-aware publish ------------------------------
+# A destination that appears AFTER the up-front existence check (a concurrent
+# actor) must never cause a nested publish or deletion of data we do not own.
+
+# FI13 — concurrent DIRECTORY at dest, created during manifest generation
+# (before the rename). Publish must refuse; the pre-existing dir must survive
+# and must not contain our tree at its root.
+SHIM=$(mktemp -d "$SCRATCH/shim-cdir-XXXX"); REAL_SHA="$(command -v sha256sum)"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'mkdir -p %q 2>/dev/null\n' "$PDI/fi13"
+  printf 'exec %q "$@"\n' "$REAL_SHA"
+} > "$SHIM/sha256sum"; chmod +x "$SHIM/sha256sum"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi13 2>&1); rc=$?
+if (( rc != 0 )) && [[ -d "$PDI/fi13" && ! -f "$PDI/fi13/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi13'" <<<"$out"; then
+  ok FI13 "concurrent dir: refused, no nested publish, dir preserved"
+else
+  bad FI13 "concurrent dir mishandled (rc=$rc)"
+fi
+
+# FI14 — tight race: dest is created (as a dir) at the instant of the final
+# rename, so mv nests our tree inside it. The post-publish root check must
+# detect the nesting and back out ONLY our nested subdir.
+SHIM=$(mktemp -d "$SCRATCH/shim-nest-XXXX"); REAL_MV="$(command -v mv)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally; $*/$@ expand when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *.new*|*settings.json*) exec %q "$@" ;; esac\n' "$REAL_MV"
+  printf 'mkdir -p %q 2>/dev/null\n' "$PDI/fi14"
+  printf 'exec %q "$@"\n' "$REAL_MV"
+} > "$SHIM/mv"; chmod +x "$SHIM/mv"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi14 2>&1); rc=$?
+if (( rc != 0 )) && [[ ! -f "$PDI/fi14/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi14'" <<<"$out"; then
+  ok FI14 "tight-race nest detected and backed out"
+else
+  bad FI14 "nested publish not detected (rc=$rc)"
+fi
+
+# FI15 — concurrent FILE at dest at rename time: mv fails. Cleanup must NOT
+# delete the file (we do not own it) — the pre-fix cleanup rm -rf'd any $dest.
+SHIM=$(mktemp -d "$SCRATCH/shim-cfile-XXXX"); REAL_MV="$(command -v mv)"
+{
+  printf '#!/usr/bin/env bash\n'
+  # shellcheck disable=SC2016
+  printf 'case "$*" in *.new*|*settings.json*) exec %q "$@" ;; esac\n' "$REAL_MV"
+  printf 'touch %q 2>/dev/null\n' "$PDI/fi15"
+  printf 'exec %q "$@"\n' "$REAL_MV"
+} > "$SHIM/mv"; chmod +x "$SHIM/mv"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi15 2>&1); rc=$?
+if (( rc != 0 )) && [[ -f "$PDI/fi15" ]] \
+   && ! grep -qE "^✅ Project 'fi15'" <<<"$out"; then
+  ok FI15 "concurrent file preserved (not owned, not deleted)"
+else
+  bad FI15 "concurrent file mishandled (rc=$rc)"
+fi
+
+# FI16 — concurrent SYMLINK at dest (created before the rename). The pre-rename
+# guard rejects a symlinked destination rather than following it into its target.
+SHIM=$(mktemp -d "$SCRATCH/shim-clink-XXXX"); REAL_SHA="$(command -v sha256sum)"
+mkdir -p "$SCRATCH/fi16-target"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'ln -s %q %q 2>/dev/null\n' "$SCRATCH/fi16-target" "$PDI/fi16"
+  printf 'exec %q "$@"\n' "$REAL_SHA"
+} > "$SHIM/sha256sum"; chmod +x "$SHIM/sha256sum"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi16 2>&1); rc=$?
+if (( rc != 0 )) && [[ -L "$PDI/fi16" && ! -f "$SCRATCH/fi16-target/CLAUDE.md" ]] \
+   && ! grep -qE "^✅ Project 'fi16'" <<<"$out"; then
+  ok FI16 "concurrent symlink refused, not followed"
+else
+  bad FI16 "concurrent symlink mishandled (rc=$rc)"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1

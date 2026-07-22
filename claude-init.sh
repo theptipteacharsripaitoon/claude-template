@@ -365,13 +365,26 @@ claude-init() {
     ( cd "$tmp" && sha256sum --check --quiet .claude/.template-manifest \
         2>/dev/null ) || exit 1
 
-    # Final publish — atomic within the same filesystem.
+    # Final publish. A plain `mv "$tmp" "$dest"` is NOT safe on its own: if
+    # another actor created $dest (as a directory) in the window since the
+    # up-front existence check, mv nests our tree INSIDE it ($dest/<tmpbase>)
+    # and returns 0 — a false success. Portably (no GNU-only `mv -T`): refuse a
+    # destination that exists now, rename, then VERIFY our tree landed at the
+    # destination ROOT; if a tighter race still nested it, back out ONLY our own
+    # subdirectory — never the other actor's $dest.
+    local tmpbase="${tmp##*/}"
+    [[ -e "$dest" || -L "$dest" ]] && exit 1
     mv "$tmp" "$dest" || exit 1
+    if [[ ! -f "$dest/CLAUDE.md" || ! -f "$dest/.claude/settings.json" ]]; then
+      [[ -d "$dest/$tmpbase" ]] && rm -rf "${dest:?}/$tmpbase"
+      exit 1
+    fi
   ); then
     rm -rf "$tmp" 2>/dev/null
-    # If the mv partially populated $dest, tear it back down; the destination
-    # must not exist after a failed bootstrap.
-    [[ -e "$dest" ]] && rm -rf "$dest"
+    # Do NOT remove $dest here. This invocation only ever creates $dest via the
+    # atomic rename above, and a nested-race subdir is already backed out inside
+    # the subshell. A $dest that exists at this point belongs to another actor —
+    # removing it would destroy data this invocation does not own.
     echo "✗ Bootstrap failed after staging — nothing was published at $dest."
     return 1
   fi
