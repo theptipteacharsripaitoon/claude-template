@@ -43,7 +43,11 @@ CMD_MATCH=${CMD_MATCH//$'\n'/ }       # bare LF
 # or long (--recursive [--force]), with other flags interleaved — anchored at a
 # command position so substrings of other words (confirm, npm) can never match.
 # The dangerous-target patterns below append what the recursion aims at.
-RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*'
+# A single rm option token. The optional `(=[^[:space:]]*)?` covers
+# value-bearing long options (`--interactive=never`, `--preserve-root=all`):
+# without it the `=value` broke the flag run and `rm --interactive=never -rf /`
+# slipped the recursive-rm patterns entirely (H2).
+RM_FLAG='-{1,2}[a-zA-Z][a-zA-Z-]*(=[^[:space:]]*)?'
 # Command-word spellings, two alternatives:
 #  1. bare `rm` — the char before it may be start-of-string, a shell separator,
 #     `/` (path prefix: /bin/rm) or `\` (alias escape: \rm); an optional

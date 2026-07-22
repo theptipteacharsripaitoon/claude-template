@@ -212,6 +212,9 @@
 {"id":"OO-003","category":"option-order","tool":"Bash","command":"rm --force --recursive /opt/app","expected":"deny","note":"long flags reversed"}
 {"id":"OO-004","category":"option-order","tool":"Bash","command":"npm install lodash --save-dev","expected":"ask","note":"option after package"}
 {"id":"OO-005","category":"option-order","tool":"Bash","command":"pip install requests --upgrade","expected":"ask","note":"upgrade flag last"}
+{"id":"OO-006","category":"option-order","tool":"Bash","command":"rm --interactive=never -rf /","expected":"deny","note":"H2: value-bearing long option before -rf /"}
+{"id":"OO-007","category":"option-order","tool":"Bash","command":"rm --interactive=once -Rf /srv/data","expected":"deny","note":"H2: =value option before -Rf abs path"}
+{"id":"OO-008","category":"option-order","tool":"Bash","command":"rm --interactive=never -rf ./build","expected":"allow","note":"H2 near-miss: =value option but named relative target"}
 {"id": "ML-001", "category": "multiline", "tool": "Bash", "command": "rm -rf \\\n/", "expected": "deny", "note": "v8-A1: recursive rm with bash line continuation (backslash-LF)"}
 {"id": "ML-002", "category": "multiline", "tool": "Bash", "command": "rm -rf\n/", "expected": "deny", "note": "v8-A1: recursive rm with bare LF between flags and target"}
 {"id": "ML-003", "category": "multiline", "tool": "Bash", "command": "rm -rf \n/", "expected": "deny", "note": "v8-A1: recursive rm with LF + trailing space"}
