@@ -177,6 +177,12 @@
 {"id":"PF-027","category":"protected-files","tool":"Write","file_path":"/repo/infra/../src/app.py","expected":"ask","ideal":"allow","oos":true,"note":"unresolved .. errs to ask (documented over-caution)"}
 {"id":"PF-028","category":"protected-files","tool":"Write","file_path":"/repo/tls.key","expected":"deny","note":"key extension"}
 {"id":"PF-029","category":"protected-files","tool":"Write","file_path":"/repo/.gitmodules","expected":"ask","note":"submodule pointers"}
+{"id":"PF-030","category":"protected-files","tool":"Write","file_path":"/repo/CLAUDE.md","expected":"ask","note":"H3: root policy file"}
+{"id":"PF-031","category":"protected-files","tool":"Write","file_path":"/repo/.claude/ENFORCEMENT.md","expected":"ask","note":"H3: enforcement policy"}
+{"id":"PF-032","category":"protected-files","tool":"Write","file_path":"/repo/.claude/skills/docker/SKILL.md","expected":"ask","note":"H3: skill instruction source"}
+{"id":"PF-033","category":"protected-files","tool":"Write","file_path":"/repo/tests/hooks/corpus.jsonl","expected":"ask","note":"H3: hook policy fixture"}
+{"id":"PF-034","category":"protected-files","tool":"Write","file_path":"/repo/tests/skills/trigger-cases.yaml","expected":"ask","note":"H3: routing policy fixture"}
+{"id":"PF-035","category":"protected-files","tool":"Write","file_path":"/repo/docs/guide.md","expected":"allow","note":"H3 near-miss: ordinary doc, not a policy source"}
 {"id":"PV-001","category":"path-variants","tool":"Write","file_path":"/repo/.GIT/config","expected":"deny","note":"case-folded git internals"}
 {"id":"PV-002","category":"path-variants","tool":"Write","file_path":"C:\\repo\\.GIT\\config","expected":"deny","note":"backslash + case variant"}
 {"id":"PV-003","category":"path-variants","tool":"Write","file_path":"/repo/.Secrets/token.txt","expected":"deny","note":"case-folded .secrets"}
