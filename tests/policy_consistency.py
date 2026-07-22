@@ -165,12 +165,49 @@ def check_airflow_version_scoped() -> None:
         )
 
 
+def check_db_migrations_engine_scoped() -> None:
+    """database-migrations gives PostgreSQL lock-safe DDL but is routed schema
+    changes for other engines too (SQL Server via database-review). It must be
+    engine-aware — name the engines and their differing mechanics — so a SQL
+    Server / MySQL user is not handed Postgres-only syntax as universal (P1-7)."""
+    skill = SKILLS / "database-migrations" / "SKILL.md"
+    if not skill.exists():
+        return
+    low = read(skill).lower()
+    missing = [e for e in ("sql server", "mysql") if e not in low]
+    if missing:
+        failures.append(
+            f"[db-engine] {skill.relative_to(ROOT)}: "
+            f"Postgres-centric guidance not engine-scoped (missing: {', '.join(missing)})"
+        )
+
+
+def check_websecurity_ratelimit_complete() -> None:
+    """The web-security FastAPI SlowAPI example claimed 'copy-paste safe' but
+    created a Limiter with no exception handler and no per-route limit — so it
+    rate-limited nothing (P1-7). Require the two enforcing pieces."""
+    skill = SKILLS / "web-security" / "SKILL.md"
+    if not skill.exists():
+        return
+    text = read(skill)
+    if "slowapi" not in text.lower():
+        return
+    missing = [n for n in ("add_exception_handler", "limiter.limit") if n not in text]
+    if missing:
+        failures.append(
+            f"[web-ratelimit] {skill.relative_to(ROOT)}: "
+            f"SlowAPI example incomplete — enforces no limit (missing: {', '.join(missing)})"
+        )
+
+
 def main() -> int:
     check_token_prefix_ban()
     check_no_auto_revert()
     check_no_skip_to_green()
     check_hook_readme_sql_consistency()
     check_airflow_version_scoped()
+    check_db_migrations_engine_scoped()
+    check_websecurity_ratelimit_complete()
     if failures:
         print("policy_consistency: FAILURES")
         for f in failures:
