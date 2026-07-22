@@ -296,6 +296,22 @@ claude-init() {
         ;;
     esac
 
+    # Provenance re-checks against the SOURCE template, done AFTER the copy so
+    # the stamp describes the bytes actually taken. tpl_commit was captured
+    # up front (before the copy); if HEAD moved since, a checkout could have
+    # mixed two commits' files into the copy — fail closed rather than stamp a
+    # commit the bytes may not match. Record dirtiness too, so a commit hash is
+    # never mistaken for a complete description of an uncommitted working tree.
+    # Only re-check when the up-front capture actually resolved a commit (a
+    # non-git template records "unknown" and has nothing to re-verify).
+    local template_dirty=false
+    if [[ "$tpl_commit" != "unknown" ]]; then
+      local tpl_commit_now
+      tpl_commit_now=$(git -C "$TEMPLATE" rev-parse HEAD 2>/dev/null || echo "unknown")
+      [[ "$tpl_commit_now" == "$tpl_commit" ]] || exit 1
+      [[ -n "$(git -C "$TEMPLATE" status --porcelain 2>/dev/null)" ]] && template_dirty=true
+    fi
+
     # Version stamp — written once, atomically. `date` is captured into a
     # variable and checked FIRST: embedded in the `echo` (as it was) a failing
     # `date` left generated_utc="" while the block still exited 0 and published.
@@ -304,6 +320,7 @@ claude-init() {
     [[ -n "$stamp_utc" ]] || exit 1
     {
       echo "template_commit=$tpl_commit"
+      echo "template_dirty=$template_dirty"
       echo "profile=$profile"
       echo "generated_utc=$stamp_utc"
     } > "$tmp/.claude/.template-version" || exit 1
@@ -364,6 +381,16 @@ claude-init() {
     # Verify the manifest actually validates against the staged tree.
     ( cd "$tmp" && sha256sum --check --quiet .claude/.template-manifest \
         2>/dev/null ) || exit 1
+
+    # Stamp a digest of the bytes actually copied — a single hash over the
+    # per-file manifest — so provenance is the TREE, not merely a commit label
+    # (which a dirty or moved template would misrepresent). Appended to the
+    # version file, which the manifest deliberately does not cover.
+    local tree_sha
+    tree_sha=$(sha256sum "$tmp/.claude/.template-manifest") || exit 1
+    tree_sha="${tree_sha%% *}"
+    [[ ${#tree_sha} -eq 64 ]] || exit 1
+    printf 'template_tree_sha256=%s\n' "$tree_sha" >> "$tmp/.claude/.template-version" || exit 1
 
     # Final publish. A plain `mv "$tmp" "$dest"` is NOT safe on its own: if
     # another actor created $dest (as a directory) in the window since the

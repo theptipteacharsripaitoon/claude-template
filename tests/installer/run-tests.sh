@@ -443,6 +443,56 @@ else
   bad FI16 "concurrent symlink mishandled (rc=$rc)"
 fi
 
+# --- B5: stamp the bytes actually copied; detect dirty / HEAD race ------------
+# A committed git template built from the real fixture, so provenance can be
+# exercised (the mounted repo's gitdir is external and unusable in a container).
+make_git_tpl() { # make_git_tpl <dir>
+  local d="$1"; mkdir -p "$d/.claude"
+  cp "$TPL/CLAUDE.md" "$TPL/.gitignore" "$TPL/.gitattributes" "$d/"
+  cp -r "$TPL/.claude/hooks" "$TPL/.claude/skills" "$d/.claude/"
+  cp "$TPL/.claude/settings.json" "$TPL/.claude/ENFORCEMENT.md" "$d/.claude/"
+  git -C "$d" init -q
+  git -C "$d" add -A
+  git -C "$d" -c user.email=t@t.test -c user.name=t commit -qm init
+}
+
+# FI17 — a DIRTY template working tree must be recorded (a commit hash alone
+# does not describe uncommitted bytes), and the stamp must carry a digest of the
+# tree actually copied.
+GTPL="$SCRATCH/gtpl"; make_git_tpl "$GTPL"
+printf '\n# dirty tweak\n' >> "$GTPL/CLAUDE.md"
+out=$(ci "$PDI" "$GTPL" fi17 2>&1); rc=$?
+if (( rc == 0 )) \
+   && grep -q '^template_dirty=true$' "$PDI/fi17/.claude/.template-version" \
+   && grep -qE '^template_tree_sha256=[0-9a-f]{64}$' "$PDI/fi17/.claude/.template-version"; then
+  ok FI17 "dirty template recorded; tree digest stamped"
+else
+  bad FI17 "dirty/tree provenance not stamped (rc=$rc)"
+fi
+
+# FI18 — the template HEAD moves between the pre-copy capture and the post-copy
+# re-check: the stamp would otherwise mislabel the copied bytes, so fail closed.
+SHIM=$(mktemp -d "$SCRATCH/shim-head-XXXX"); REAL_GIT="$(command -v git)"; CTR="$SHIM/ctr"
+{
+  printf '#!/usr/bin/env bash\n'
+  # Shim source emitted literally; expansions happen when the shim RUNS. SC2016.
+  # shellcheck disable=SC2016
+  printf 'if [[ "$*" == *"rev-parse HEAD"* ]]; then\n'
+  # shellcheck disable=SC2016
+  printf '  n=$(cat %q 2>/dev/null || echo 0); echo $((n+1)) > %q\n' "$CTR" "$CTR"
+  # shellcheck disable=SC2016
+  printf '  [[ "$n" == 0 ]] && echo 1111111111111111111111111111111111111111 || echo 2222222222222222222222222222222222222222\n'
+  printf '  exit 0\n'
+  printf 'fi\n'
+  printf 'exec %q "$@"\n' "$REAL_GIT"
+} > "$SHIM/git"; chmod +x "$SHIM/git"
+out=$(ci_shim "$PDI" "$TPL" "$SHIM" fi18 2>&1); rc=$?
+if (( rc != 0 )); then
+  assert_failure_closed FI18 "$PDI" "$out" fi18
+else
+  bad FI18 "expected non-zero exit for template HEAD change; got 0"
+fi
+
 echo ""
 echo "RESULT: pass=$PASS fail=$FAIL"
 [[ "$FAIL" == 0 ]] || exit 1
