@@ -53,6 +53,7 @@ run "routing scorer + parser"      "$PY" tests/skills/routing/test_run_eval.py
 run "routing results consistency"  "$PY" tests/skills/routing/test_results_consistency.py
 run "session scorer unit tests"    "$PY" tests/sessions/test_score_session.py
 run "session driver<->scorer contract" "$PY" tests/sessions/test_driver_contract.py
+run "session driver smoke (stubbed)"   bash tests/sessions/test_driver_smoke.sh
 
 # --- Static integrity -------------------------------------------------------
 run "markdown link check"          "$PY" tests/check_links.py

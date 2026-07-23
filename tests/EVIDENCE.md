@@ -50,15 +50,27 @@ The scorer (`score_session.py`, unit-tested offline at 22/22) now requires, per
 scenario: Claude exit 0, every non-blank stream line valid JSON, a terminal
 `result` event, the expected Stop outcome, required/forbidden skills, the
 permission tier (`ask`/`deny`/`allow`=zero-asks-and-denies/`ignore`), an exact
-changed-path allowlist (no unrelated edits), and the semantic check. The driver
-still needs finalizing to feed these inputs and to make the migration/infra
-scenarios two-turn (plan-then-confirm) with pristine-red semantic predicates —
-best done together with a live run.
+changed-path allowlist (no unrelated edits), and the semantic check.
+
+The driver now feeds all of those inputs, and the migration (`s4`) and prod-infra
+(`s5`) scenarios are **two-turn plan-then-confirm** on the `ask` tier: turn 1
+runs in plan mode and must leave the artifact pristine-red (the agent plans
+without editing), turn 2 accepts edits so the protected write proceeds and
+protect-files logs the ASK. `s5`'s seed moved under `k8s/prod/` so the write
+actually trips that tier. The driver's shell orchestration is exercised offline
+by `tests/sessions/test_driver_smoke.sh` (a stubbed `claude` via `CLAUDE_BIN`,
+gated in `verify-offline.sh`); the live MODEL behavior — that the agent really
+plans first and the real hook asks — is only provable by an authenticated run.
 
 ## Status
 
 - Offline halves: **done and CI-gated** (scorers, parsers, consistency, matrix,
-  corpus, installer, hooks).
-- Live regen + fixture expansion + `run-sessions.sh` finalize: **pending
-  approval** — they cost real model time and their correctness is only provable
-  by running them.
+  corpus, installer, hooks). Now includes the routing coverage floor
+  (`check_coverage.py`, 37/37 skills ≥2 pos + ≥1 neg) and the session driver
+  smoke test (`test_driver_smoke.sh`, one-turn + two-turn stubbed).
+- `run-sessions.sh` finalize (two-turn `s4`/`s5`) and the fixture coverage-floor
+  expansion: **done offline** — reviewable code, no model cost, stub-gated.
+- Live regen (routing + realistic sessions) on the release commit: **pending
+  approval** — it costs real model time and its correctness is only provable by
+  running it. The two-turn plan-first behavior is asserted but unverified until
+  that run.
