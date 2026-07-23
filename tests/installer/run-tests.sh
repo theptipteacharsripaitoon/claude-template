@@ -428,6 +428,10 @@ fi
 
 # FI16 — concurrent SYMLINK at dest (created before the rename). The pre-rename
 # guard rejects a symlinked destination rather than following it into its target.
+# Skipped where the platform has no real symlinks (Git Bash without
+# winsymlinks) — `ln -s` there makes a copy, so the case is meaningless.
+if ln -s x "$SCRATCH/.symprobe16" 2>/dev/null && [[ -L "$SCRATCH/.symprobe16" ]]; then
+rm -f "$SCRATCH/.symprobe16"
 SHIM=$(mktemp -d "$SCRATCH/shim-clink-XXXX"); REAL_SHA="$(command -v sha256sum)"
 mkdir -p "$SCRATCH/fi16-target"
 {
@@ -526,6 +530,9 @@ ln -s /etc/hostname "$PDS/ss1/evil-link"
 printf '%s  %s\n' "$(printf 'b%.0s' {1..64})" "evil-link" >> "$PDS/ss1/.claude/.template-manifest"
 yout=$(cd "$PDS/ss1" && source "$REPO/claude-init.sh" && claude-template-status 2>&1); yrc=$?
 if (( yrc != 0 )); then ok STSYM "status refuses symlinked manifest path"; else bad STSYM "status followed symlink row (rc=$yrc): $(head -c 80 <<<"$yout")"; fi
+else
+  echo "SKIP     FI16/STSYM — no real symlink support on this platform"
+fi
 
 # --- H5: install.sh honesty (chmod + wiring) ---------------------------------
 
