@@ -238,21 +238,21 @@ def test_parse_empty_stream_missing_result_is_anomalous():
 
 def test_row_provenance_hashes_stable_and_order_independent():
     import run_eval as R
-    prov = {"repo_commit": "c", "fixture_digest": "fd",
-            "descriptions_digest": "dd", "os": "linux", "generated_utc": "ts"}
-    a = R._row_provenance(
-        {"prompt": "do x", "must_load": ["a", "b"], "must_not_load": ["y"],
-         "allowed_companions": ["c"]}, prov)
-    b = R._row_provenance(
-        {"prompt": "do x", "must_load": ["b", "a"], "must_not_load": ["y"],
-         "allowed_companions": ["c"]}, prov)  # reordered lists
+    prov = {"repo_commit": "c", "fixture_digest": "fd", "descriptions_digest": "dd",
+            "os": "linux", "generated_utc": "ts", "cc_version": "2.1.9"}
+    case = {"prompt": "do x", "must_load": ["a", "b"], "must_not_load": ["y"],
+            "allowed_companions": ["c"]}
+    a = R._row_provenance(case, prov)                                # no stream cc
+    b = R._row_provenance(dict(case, must_load=["b", "a"]), prov)    # reordered lists
     assert a["expectation_sha256"] == b["expectation_sha256"]
     assert len(a["prompt_sha256"]) == 64 and len(a["expectation_sha256"]) == 64
-    c = R._row_provenance(
-        {"prompt": "do y", "must_load": ["a", "b"], "must_not_load": ["y"],
-         "allowed_companions": ["c"]}, prov)
+    c = R._row_provenance(dict(case, prompt="do y"), prov)
     assert c["prompt_sha256"] != a["prompt_sha256"]
     assert a["repo_commit"] == "c" and a["os"] == "linux" and a["generated_utc"] == "ts"
+    # cc_version: the stream value wins; otherwise the prov fallback is stamped
+    # (a row is never null when `claude --version` resolved).
+    assert a["cc_version"] == "2.1.9"
+    assert R._row_provenance(case, prov, "2.1.5")["cc_version"] == "2.1.5"
 
 
 def main():

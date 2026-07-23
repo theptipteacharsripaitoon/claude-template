@@ -114,12 +114,15 @@ def _descriptions_digest() -> str:
     return h.hexdigest()
 
 
-def _row_provenance(case: dict, prov: dict) -> dict:
+def _row_provenance(case: dict, prov: dict, stream_cc_version: str | None = None) -> dict:
     """Immutable per-row provenance so every result row is independently
     verifiable against the fixture it came from (review P1-6). The prompt and
     expectation hashes pin WHAT was asked; the commit/digests/os/timestamp pin
-    the exact state it was asked against. A row can then be rejected on resume
-    or merge if any of these no longer match the current fixture."""
+    the exact state it was asked against. cc_version prefers the value the stream
+    reported; when the init event omits it (observed on 2.1.x), it falls back to
+    the `claude --version` captured in prov, so the ROW is never null while the
+    summary has it. A row can be rejected on resume/merge if any of these no
+    longer match the current fixture."""
     import hashlib
 
     prompt_sha = hashlib.sha256(case["prompt"].encode("utf-8")).hexdigest()
@@ -135,6 +138,7 @@ def _row_provenance(case: dict, prov: dict) -> dict:
     return {
         "prompt_sha256": prompt_sha,
         "expectation_sha256": expectation_sha,
+        "cc_version": stream_cc_version or prov.get("cc_version"),
         "repo_commit": prov["repo_commit"],
         "fixture_digest": prov["fixture_digest"],
         "descriptions_digest": prov["descriptions_digest"],
@@ -415,6 +419,9 @@ def main() -> None:
         "descriptions_digest": _descriptions_digest(),
         "os": sys.platform,
         "generated_utc": stamp,
+        # Fallback cc_version so every row is stamped even when the stream init
+        # event omits it (observed on Claude Code 2.1.x).
+        "cc_version": claude_version(claude),
     }
 
     rows = []
@@ -422,7 +429,7 @@ def main() -> None:
         for case in cases:
             for run_no in range(1, args.runs + 1):
                 row = score(run_once(claude, bash, case, run_no))
-                row.update(_row_provenance(case, prov))
+                row.update(_row_provenance(case, prov, row.get("cc_version")))
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()
