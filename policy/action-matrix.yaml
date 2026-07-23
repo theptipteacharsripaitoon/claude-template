@@ -1,11 +1,17 @@
 # Machine-readable action contract for the claude-template guardrails.
 #
-# This is the SINGLE SOURCE OF TRUTH for "what happens when the agent tries to
-# do X". CLAUDE.md prose, the enforcement hooks, the hook corpus, and the
-# realistic-session expectations must all AGREE with the decision recorded here.
-# `tests/policy_matrix.py` validates that agreement and fails on any drift or
-# contradiction (review finding P1-8: policy, skills, hooks, and evaluations
-# previously lacked one contract, so they disagreed).
+# SCOPE: this is the single source of truth WITHIN THIS TEMPLATE REPOSITORY for
+# "what happens when the agent tries to do X" — CLAUDE.md prose, the enforcement
+# hooks, the hook corpus, and the realistic-session expectations must all AGREE
+# with the decision recorded here, and `tests/policy_matrix.py` fails on any
+# drift (review finding P1-8: policy, skills, hooks, and evaluations previously
+# lacked one contract, so they disagreed).
+#
+# It is a BUILD-TIME / QA artifact, NOT a runtime dependency: the hooks never
+# read it, and `claude-init.sh` deliberately does NOT install it into generated
+# projects. In a generated project the RUNTIME authority is the hooks plus
+# CLAUDE.md — this file only governs the template's own internal consistency
+# (review P2: do not call it the generated project's runtime source of truth).
 #
 # Fields per operation:
 #   id                        stable kebab-case slug
