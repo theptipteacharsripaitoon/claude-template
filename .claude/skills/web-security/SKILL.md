@@ -157,7 +157,10 @@ Any endpoint that redirects to a URL from user input is a phishing weapon.
 - **Mask user PII where a truncated form is useful and non-authenticating**, e.g. show last-4 of a payment card or the local-part of an email in an operator UI — never the same treatment for authenticating secrets.
 - **Audit log** sensitive actions (login, password change, role change, money movement). Audit logs are append-only.
 
-## Common patterns (copy-paste safe defaults)
+## Common patterns (secure starting points — set your own hosts, origins, CSP)
+
+These compile and enforce as written, but you MUST substitute your hosts,
+origins, and CSP. They are a correct baseline, not a drop-in for every app.
 
 ### Express (Node)
 ```js
@@ -166,25 +169,40 @@ import rateLimit from 'express-rate-limit';
 
 app.use(helmet({
   contentSecurityPolicy: { /* configured per app */ },
-  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  // `preload: true` opts the domain into browser HSTS preload lists — a
+  // long-term, hard-to-reverse commitment (every subdomain HTTPS-only forever).
+  // Enable it deliberately, only once you are certain. Default OFF:
+  hsts: { maxAge: 31536000, includeSubDomains: true /* , preload: true */ },
 }));
 app.use('/auth', rateLimit({ windowMs: 60_000, max: 10 }));
 ```
 
 ### FastAPI (Python)
 ```python
+from fastapi import FastAPI, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
+app = FastAPI()
 app.state.limiter = limiter
+# REQUIRED: without this handler a limited route raises an unhandled error.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["api.example.com"])
 app.add_middleware(CORSMiddleware,
     allow_origins=["https://app.example.com"],
-    allow_credentials=True, allow_methods=["GET","POST"], allow_headers=["*"])
+    allow_credentials=True, allow_methods=["GET", "POST"], allow_headers=["*"])
+
+# The Limiter enforces NOTHING until a route opts in with @limiter.limit AND
+# takes a `request: Request` parameter (SlowAPI reads the client key from it).
+@app.post("/auth/login")
+@limiter.limit("10/minute")
+async def login(request: Request):
+    ...
 ```
 
 ## Done criteria (in addition to CLAUDE.md §14)
