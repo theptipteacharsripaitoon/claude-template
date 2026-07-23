@@ -880,7 +880,7 @@ echo "== v8 A4: malformed input fails OPEN but is now OBSERVABLE (logged) =="
 # closed would break every tool call on a misconfigured host — but the bypass
 # must be recorded so it is not silent. FO1: exit 0. FO2: a FAIL_OPEN row is
 # appended to hooks.log naming the hook, with NO payload/field value.
-: > "$SCRATCH/logs/hooks.log" 2>/dev/null || { mkdir -p "$SCRATCH/logs"; : > "$SCRATCH/logs/hooks.log"; }
+mkdir -p "$SCRATCH/logs"; : > "$SCRATCH/logs/hooks.log"
 mkdir -p "$SCRATCH/.claude/logs"; : > "$SCRATCH/.claude/logs/hooks.log"
 got=0; printf '%s' 'THIS IS NOT JSON' | bash "$HOOKS/block-destructive.sh" >/dev/null 2>&1 || got=$?
 if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); printf 'PASS %-6s malformed input still fails open (exit 0)\n' FO1
