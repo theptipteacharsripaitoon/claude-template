@@ -68,6 +68,10 @@ def load_cases() -> list[dict]:
                 {
                     "cluster": cluster,
                     "id": cid,
+                    # Which seed-repo.sh shape to build; defaults to the case id
+                    # (the historical 1:1 mapping). A case may set `seed:` to
+                    # REUSE an existing shape instead of defining a new one.
+                    "seed": case.get("seed") or cid,
                     "prompt": case["prompt"],
                     "must_load": case.get("must_load") or [],
                     "must_not_load": case.get("must_not_load") or [],
@@ -245,7 +249,7 @@ def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"route-{case['id']}-") as tmp:
         seeded = pathlib.Path(tmp) / "repo"
         subprocess.run(
-            [bash, str(SEED), case["id"], str(seeded)],
+            [bash, str(SEED), case["seed"], str(seeded)],
             check=True,
             capture_output=True,
             timeout=120,
