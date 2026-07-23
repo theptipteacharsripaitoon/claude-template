@@ -13,6 +13,27 @@ description: >-
 
 Extends `CLAUDE.md` (especially §19 Reliability & Resource Safety). When this skill loads, its rules and Done criteria apply on top of the universal baseline.
 
+## Detect the Airflow major version FIRST
+
+Airflow 3 changed several DAG-authoring APIs this skill touches. Before writing
+or changing a DAG, determine the target major version — read the `apache-airflow`
+pin in `requirements.txt` / `constraints` / `pyproject.toml`, or run
+`airflow version`. If it is unknown, ask rather than guess; 2.x and 3.x diverge
+where marked below.
+
+| Concern | Airflow 2.x | Airflow 3.x (Task SDK) |
+|---|---|---|
+| Authoring imports | `from airflow.decorators import dag, task` | `from airflow.sdk import dag, task, Asset` |
+| Task context | `**kwargs`, or `get_current_context()` | `get_current_context()` — no signature change; `**kwargs` not required |
+| Cross-DAG data deps | Datasets (2.4+): `from airflow.datasets import Dataset` | Assets: `from airflow.sdk import Asset` (Datasets were renamed to Assets) |
+| Latency / deadline alerts | `sla=` in `default_args` (noisy; being retired) | SLAs **removed** — use **Deadline Alerts** |
+| SubDAGs | Deprecated | Removed — TaskGroups + Assets / data-aware scheduling |
+
+The examples below use Airflow 2.x import paths where they differ; on an Airflow 3
+project substitute the Task SDK (`airflow.sdk`) equivalents from this table. The
+numeric thresholds throughout are **starting points — tune them to your worker
+economics, backend, and wait distribution**, not universal law.
+
 ## DAG authoring
 
 **The cardinal rule: DAGs parse on every scheduler tick.** Anything at module level runs hundreds of times per minute. This causes most Airflow performance issues.
@@ -37,7 +58,7 @@ Extends `CLAUDE.md` (especially §19 Reliability & Resource Safety). When this s
 - **TaskFlow API** (`@task` decorator) for new DAGs. Avoid `PythonOperator` boilerplate unless interfacing with existing operators.
 - **TaskGroups** for organization. SubDAGs are deprecated and broken; do not use them.
 - **One task = one logical unit of work.** If the docstring needs "and," split it.
-- **Tasks must accept context kwargs** (`**kwargs`) to access `ti`, `data_interval_start`, etc.
+- **Access run context explicitly.** On Airflow 3 call `get_current_context()` inside the task to read `ti`, `data_interval_start`, etc. — no signature change. On 2.x either `get_current_context()` or a `**kwargs` context parameter works.
 
 ## Operators & sensors
 
@@ -57,14 +78,14 @@ default_args = {
     'max_retry_delay': timedelta(hours=1),
     'execution_timeout': timedelta(minutes=30),
     'on_failure_callback': alert_on_failure,
-    'sla': timedelta(hours=2),  # only on critical paths
+    'sla': timedelta(hours=2),  # Airflow 2.x ONLY — removed in 3.x; use Deadline Alerts
 }
 ```
 
 - `execution_timeout` on every task. Untimed tasks block downstream forever.
 - `on_failure_callback` for alerting on critical DAGs (PagerDuty/Slack).
-- **SLAs only on critical paths.** SLA misses generate noise if applied broadly.
-- **Datasets** (Airflow 2.4+) for cross-DAG dependencies. Avoid `ExternalTaskSensor` chains — they create scheduler load and tight coupling.
+- **SLAs (Airflow 2.x) only on critical paths** — misses generate noise if applied broadly. **Airflow 3 removed SLAs; use Deadline Alerts** for latency/deadline monitoring.
+- **Assets** (Airflow 3, `airflow.sdk`) / **Datasets** (Airflow 2.4+, `airflow.datasets`) for cross-DAG data dependencies. Avoid `ExternalTaskSensor` chains — they create scheduler load and tight coupling.
 
 ## Data hygiene
 
@@ -126,7 +147,7 @@ def test_no_dag_takes_too_long_to_parse(dagbag):
 - `dag_run.conf` reads at parse time — only valid at execution time inside a task.
 - `Variable.get()` at the top of a DAG file — parses on every scheduler tick.
 - Long-running tasks (>4h) without checkpointing — split into smaller idempotent steps.
-- Cross-DAG triggering via `TriggerDagRunOperator` chains for ordering — use Datasets instead.
+- Cross-DAG triggering via `TriggerDagRunOperator` chains for ordering — use Assets (3.x) / Datasets (2.x) data-aware scheduling instead.
 - Hardcoded paths, dates, environment names — use Airflow Variables, Connections, or env vars.
 - `PythonOperator` calling huge inline functions — extract to `include/` and unit-test.
 

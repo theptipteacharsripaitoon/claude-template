@@ -235,7 +235,7 @@ Advanced patterns (test pyramid, property-based, mutation, contract testing, tes
 - Never assert on log output, error message strings, or other text not part of the contract.
 - Mock external services at the boundary. Within your own codebase, **prefer real implementations within the same architectural layer** — mock only at explicit boundaries, or when real dependencies make tests non-deterministic, slow, or operationally expensive.
 - Test data must be deterministic. No real timestamps, no `Math.random()` without a fixed seed.
-- A flaky test is a broken test. Track it, fix it, or delete it — never accept it as permanent, never retry-to-pass in CI.
+- A flaky test is a broken test. Track it, fix it, or quarantine it (skip with a tracked ticket and a revisit trigger) — never delete-to-green, never accept it as permanent, never retry-to-pass in CI.
 
 ## 11. Git Discipline
 
@@ -246,7 +246,9 @@ Advanced patterns (test pyramid, property-based, mutation, contract testing, tes
 
 **Branches:** `<type>/<kebab-case-description>` — e.g., `feat/user-auth`, `fix/login-redirect-loop`. Open a PR; never push straight to a shared branch. Delete the branch after merge.
 
-**Forbidden:** direct commits to `main`/`master`/`production`/`release/*`, force-push to shared branches, committing generated files / secrets / large binaries / unrelated changes, rewriting history of a branch others have based work on.
+**Forbidden:** force-push to shared branches, committing generated files / secrets / large binaries / unrelated changes, rewriting history of a branch others have based work on.
+
+Direct commits to `main`/`master`/`production`/`release/*` are not routine — they require explicit confirmation in the current message (the hook asks; §2), rather than an absolute ban, so a solo main-branch flow stays possible with one approval.
 
 ## 12. Error Handling & Logging
 

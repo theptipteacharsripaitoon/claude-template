@@ -145,11 +145,100 @@ def check_hook_readme_sql_consistency() -> None:
         )
 
 
+# --- 5. Version-sensitive skills must scope their guidance ------------------
+def check_airflow_version_scoped() -> None:
+    """The airflow skill must give Airflow-3-aware guidance: a version scope,
+    Task SDK imports (airflow.sdk), get_current_context(), Assets (not only the
+    renamed-away Datasets), and the Deadline-Alerts replacement for removed
+    SLAs. Guards the P1-7 regression where the skill described only Airflow 2.x
+    APIs and would generate version-invalid DAGs on an Airflow 3 project."""
+    skill = SKILLS / "airflow" / "SKILL.md"
+    if not skill.exists():
+        return
+    low = read(skill).lower()
+    required = ("airflow 3", "airflow.sdk", "get_current_context", "assets", "deadline alert")
+    missing = [r for r in required if r not in low]
+    if missing:
+        failures.append(
+            f"[airflow-version] {skill.relative_to(ROOT)}: "
+            f"missing Airflow-3 guidance ({', '.join(missing)})"
+        )
+
+
+def check_db_migrations_engine_scoped() -> None:
+    """database-migrations gives PostgreSQL lock-safe DDL but is routed schema
+    changes for other engines too (SQL Server via database-review). It must be
+    engine-aware — name the engines and their differing mechanics — so a SQL
+    Server / MySQL user is not handed Postgres-only syntax as universal (P1-7)."""
+    skill = SKILLS / "database-migrations" / "SKILL.md"
+    if not skill.exists():
+        return
+    low = read(skill).lower()
+    missing = [e for e in ("sql server", "mysql") if e not in low]
+    if missing:
+        failures.append(
+            f"[db-engine] {skill.relative_to(ROOT)}: "
+            f"Postgres-centric guidance not engine-scoped (missing: {', '.join(missing)})"
+        )
+
+
+def check_websecurity_ratelimit_complete() -> None:
+    """The web-security FastAPI SlowAPI example claimed 'copy-paste safe' but
+    created a Limiter with no exception handler and no per-route limit — so it
+    rate-limited nothing (P1-7). Require the two enforcing pieces."""
+    skill = SKILLS / "web-security" / "SKILL.md"
+    if not skill.exists():
+        return
+    text = read(skill)
+    if "slowapi" not in text.lower():
+        return
+    missing = [n for n in ("add_exception_handler", "limiter.limit") if n not in text]
+    if missing:
+        failures.append(
+            f"[web-ratelimit] {skill.relative_to(ROOT)}: "
+            f"SlowAPI example incomplete — enforces no limit (missing: {', '.join(missing)})"
+        )
+
+
+def check_matrix_prose_alignment() -> None:
+    """Prose must agree with policy/action-matrix.yaml on the resolved
+    contradictions (P1-8): flaky tests QUARANTINE (never delete-to-green),
+    protected-branch commits are ASK (not flatly Forbidden), and the release
+    secret + verification gates are NON-WAIVABLE."""
+    claude = read(ROOT / "CLAUDE.md")
+    # C4 — §10 must not offer deletion as a flaky-test remedy.
+    for i, line in enumerate(claude.splitlines(), 1):
+        lo = line.lower()
+        if "flaky test" in lo and "delete it" in lo and "never delete" not in lo:
+            failures.append(
+                f"[matrix-prose] CLAUDE.md:{i}: flaky-test line offers deletion; "
+                f"matrix says quarantine, not delete-to-green"
+            )
+    # C3 — §11 must not list direct commits to protected branches as flatly Forbidden.
+    m = re.search(r"\*\*Forbidden:\*\*[^\n]*", claude)
+    if m and "direct commits to" in m.group(0):
+        failures.append(
+            "[matrix-prose] CLAUDE.md §11: protected-branch commits listed as "
+            "Forbidden; matrix says ask (with confirmation)"
+        )
+    # C5 — release-readiness must mark the secret + verification gates non-waivable.
+    rr = SKILLS / "release-readiness" / "SKILL.md"
+    if rr.exists() and "non-waivable" not in read(rr).lower():
+        failures.append(
+            "[matrix-prose] release-readiness: secret + verification gates not "
+            "marked non-waivable"
+        )
+
+
 def main() -> int:
     check_token_prefix_ban()
     check_no_auto_revert()
     check_no_skip_to_green()
     check_hook_readme_sql_consistency()
+    check_airflow_version_scoped()
+    check_db_migrations_engine_scoped()
+    check_websecurity_ratelimit_complete()
+    check_matrix_prose_alignment()
     if failures:
         print("policy_consistency: FAILURES")
         for f in failures:

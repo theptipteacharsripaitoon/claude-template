@@ -13,6 +13,28 @@ description: >-
 
 Extends `CLAUDE.md` (especially §19 Reliability & Resource Safety). When this skill loads, its rules and Done criteria apply on top of the universal baseline.
 
+## Detect the target engine FIRST
+
+The **patterns** here — expand → migrate → contract, reversibility, batched
+backfills, naming, "no DDL on app startup" — are engine-agnostic. The lock-safe
+DDL **syntax and gotchas** are engine-specific, and the detailed examples below
+are **PostgreSQL**. Read the engine from the project (connection string, driver,
+Alembic/Flyway dialect) before writing DDL and translate via this table — never
+hand a SQL Server or MySQL user Postgres-only syntax:
+
+| Operation | PostgreSQL | SQL Server | MySQL 8 / InnoDB |
+|---|---|---|---|
+| Online index build | `CREATE INDEX CONCURRENTLY` | `CREATE INDEX … WITH (ONLINE = ON)` (Enterprise) | `CREATE INDEX … ALGORITHM=INPLACE, LOCK=NONE` |
+| Add constraint, validate later | `… NOT VALID` → `VALIDATE CONSTRAINT` | `WITH NOCHECK …` → `WITH CHECK CHECK CONSTRAINT` | validate offline, or an online-schema-change tool |
+| Transactional DDL | Yes (except `CONCURRENTLY`) | Yes (wrap in a transaction) | **No** — DDL auto-commits; plan for no rollback |
+| Big auto PK | `BIGINT … GENERATED AS IDENTITY` / `BIGSERIAL` | `BIGINT IDENTITY(1,1)` | `BIGINT AUTO_INCREMENT` |
+| Timezone-aware timestamp | `TIMESTAMPTZ` | `DATETIMEOFFSET` | store UTC in `TIMESTAMP` / `DATETIME` |
+| Big online alter | `squawk` lint + native online DDL | manual review; copy-swap for big rewrites | `gh-ost` / `pt-online-schema-change` |
+
+On SQL Server and MySQL the native online-DDL story is weaker than Postgres —
+for a large change prefer copy-into-new-table + atomic swap, or a proven
+online-schema-change tool, over a bare `ALTER`.
+
 ## The cardinal rule: zero-downtime via expand → migrate → contract
 
 **Never make a backwards-incompatible schema change in a single deploy.** Split into phases that ship independently. The application and database must always be compatible during the rollout window.
