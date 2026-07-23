@@ -7,8 +7,11 @@
 # live model evaluations (skill routing, realistic sessions) are separate and
 # run out-of-band; their exact-SHA evidence lives under tests/*/results/.
 #
-# Requirements: bash, jq, git, python3 (+ pyyaml). ShellCheck is optional here
-# (a warning if absent); CI installs the pinned version and gates on it.
+# Requirements: bash, jq, git, node, python3. The one pip dependency (PyYAML) is
+# pinned in tests/requirements-verify.txt — install it with
+#   python -m pip install -r tests/requirements-verify.txt
+# ShellCheck is optional here (a warning if absent); CI installs the pinned
+# ShellCheck + the same PyYAML pin and gates on both.
 #
 # Usage: bash tests/verify-offline.sh
 set -uo pipefail

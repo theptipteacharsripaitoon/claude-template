@@ -1,0 +1,18 @@
+# Verifier Python dependencies — the single pinned manifest for the offline gate
+# (tests/verify-offline.sh). Install with:
+#
+#     python -m pip install -r tests/requirements-verify.txt
+#
+# This is the ONLY pip dependency the verifier needs; PyYAML backs the YAML
+# parsing in tests/policy_matrix.py, tests/skills/check_catalog.py, and
+# tests/skills/check_coverage.py. The other verifier tools — bash, jq, git,
+# node, shellcheck — are system-provisioned (Docker image / CI runner), not pip
+# packages, so they are intentionally not listed here.
+#
+# Keep this pin identical to the one CI installs (.github/workflows/test.yml).
+#
+# Hardening TODO (needs a network-enabled step, so not done in this offline
+# pass): pin artifact hashes with `pip hash` / `pip-compile --generate-hashes`
+# and append `--hash=sha256:...` to the line below for a fully reproducible,
+# tamper-evident install.
+PyYAML==6.0.2
