@@ -283,8 +283,10 @@ services:
 EOF
     ;;
   cov-kubernetes)
-    mkdir -p k8s
-    cat > k8s/deployment.yaml <<'EOF'
+    # Under k8s/prod/ so a write here trips the protect-files ASK tier
+    # (has_segment k8s && has_segment prod); routing does not assert on path.
+    mkdir -p k8s/prod
+    cat > k8s/prod/deployment.yaml <<'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
