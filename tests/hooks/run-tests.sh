@@ -165,10 +165,17 @@ t_ask PFPOL4 protect-files.sh "$(fp '/repo/tests/hooks/corpus.jsonl')"
 t_ask PFPOL5 protect-files.sh "$(fp '/repo/tests/skills/trigger-cases.yaml')"
 t_noask PFPOL6 protect-files.sh "$(fp '/repo/docs/guide.md')"
 echo "== protect-files: symlink alias resolves, not bypasses (H4) =="
-: > "$SCRATCH/.env"; ln -sf "$SCRATCH/.env" "$SCRATCH/env-alias"
-t PFSYM1 2 protect-files.sh "$(fp "$SCRATCH/env-alias")"
-: > "$SCRATCH/plain.py"; ln -sf "$SCRATCH/plain.py" "$SCRATCH/safe-alias"
-t PFSYM2 0 protect-files.sh "$(fp "$SCRATCH/safe-alias")"
+# Skip where the platform has no real symlinks (Git Bash without
+# MSYS=winsymlinks:nativestrict): `ln -s` there makes a copy, not a link, so
+# these tests are meaningless. The hook's readlink -f resolution is a Unix path.
+if ln -sf "$SCRATCH/.env" "$SCRATCH/env-alias" 2>/dev/null && [[ -L "$SCRATCH/env-alias" ]]; then
+  : > "$SCRATCH/.env"
+  t PFSYM1 2 protect-files.sh "$(fp "$SCRATCH/env-alias")"
+  : > "$SCRATCH/plain.py"; ln -sf "$SCRATCH/plain.py" "$SCRATCH/safe-alias"
+  t PFSYM2 0 protect-files.sh "$(fp "$SCRATCH/safe-alias")"
+else
+  echo "SKIP   PFSYM1/2 — no real symlink support on this platform"
+fi
 echo "== protect-files: NotebookEdit coverage (migrations ask) =="
 t_ask NB1 protect-files.sh '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/repo/migrations/x.ipynb"}}'
 echo "== protect-files: ask JSON stays valid on hostile basenames =="

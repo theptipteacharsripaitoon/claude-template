@@ -236,6 +236,25 @@ def test_parse_empty_stream_missing_result_is_anomalous():
     assert stream_anomaly(p) is not None
 
 
+def test_row_provenance_hashes_stable_and_order_independent():
+    import run_eval as R
+    prov = {"repo_commit": "c", "fixture_digest": "fd",
+            "descriptions_digest": "dd", "os": "linux", "generated_utc": "ts"}
+    a = R._row_provenance(
+        {"prompt": "do x", "must_load": ["a", "b"], "must_not_load": ["y"],
+         "allowed_companions": ["c"]}, prov)
+    b = R._row_provenance(
+        {"prompt": "do x", "must_load": ["b", "a"], "must_not_load": ["y"],
+         "allowed_companions": ["c"]}, prov)  # reordered lists
+    assert a["expectation_sha256"] == b["expectation_sha256"]
+    assert len(a["prompt_sha256"]) == 64 and len(a["expectation_sha256"]) == 64
+    c = R._row_provenance(
+        {"prompt": "do y", "must_load": ["a", "b"], "must_not_load": ["y"],
+         "allowed_companions": ["c"]}, prov)
+    assert c["prompt_sha256"] != a["prompt_sha256"]
+    assert a["repo_commit"] == "c" and a["os"] == "linux" and a["generated_utc"] == "ts"
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
