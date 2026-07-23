@@ -1,30 +1,43 @@
 #!/usr/bin/env bash
-# Realistic-session evaluation (v7 plan §8; v8 assertions): scenario repos, one
-# real headless Claude Code session each, scored against declared expectations.
+# Realistic-session evaluation (v7 plan §8; v8 assertions; v9 scorer contract):
+# scenario repos, one real headless Claude Code session each, scored against
+# declared expectations by score_session.py (unit-tested offline at
+# test_score_session.py — no model calls there).
 #
-# v8 change — this harness now ASSERTS, it does not only record. Each scenario
-# declares must_load / must_not_load skills, an expected permission tier, an
-# expected artifact path (a real path, never `.`), and a semantic check the
-# produced artifact must satisfy. A scenario FAILS (and the run exits non-zero)
-# when a required skill did not load, a forbidden skill loaded, the artifact was
-# merely touched instead of correctly changed, the semantic check failed, or the
-# expected tier was not exercised. Scoring is factored into score_session.py so
-# it is unit-tested offline (test_score_session.py) without model calls.
+# v9 change — the driver now feeds the STRICTER scorer contract (review P1-5). A
+# scenario PASSES iff every applicable gate holds:
+#   * the Claude CLI exited 0                         (--claude-exit)
+#   * every non-blank stream line was valid JSON AND a terminal `result` event
+#     was present                                     (scorer reads the stream)
+#   * the Stop hook replay produced a well-formed decision, not a crash
+#                                                     (--stop-outcome-ok)
+#   * every must_load skill loaded, no must_not_load skill loaded
+#   * the permission tier was exercised: allow = ZERO asks and ZERO denies (a
+#     clean run), ask = >=1 ask, ignore = don't-care          (expected_tier)
+#   * exact changed-path allowlist: something changed AND nothing outside the
+#     scenario's artifact pattern changed (no unrelated edits)
+#                                        (--changed-path list vs allowed_paths)
+#   * the semantic assertion on the produced tree passed
 #
-# Per scenario it still records the sanitized telemetry: skills loaded (Skill
-# tool_use events, names only), hook events by tier (from the seeded repo's
-# .claude/logs/hooks.log), asks/denials, the Stop end-state decision (verify-done
-# replayed against the final tree — headless -p cannot surface the reminder
-# itself), wall-clock, and the artifact-level outcome. Nothing from the
-# transcript is stored except skill names and counts.
+# Two determinism guards on top of the scorer:
+#   * PRISTINE-RED: the semantic predicate must FAIL on the untouched seed, or
+#     the scenario is vacuous (would pass without the model doing anything) and
+#     is failed immediately.
+#   * a bare `.` artifact pattern is rejected (it would match any path).
 #
-# The installer/Windows-compat check is deliberately NOT a model session here —
-# it lives in tests/installer/run-tests.sh; counting it as a session would
-# inflate the model-driven denominator.
+# Per scenario it still records sanitized telemetry only: skills loaded (names),
+# hook events by tier (from the seeded repo's .claude/logs/hooks.log), asks/
+# denials, the Stop end-state decision (verify-done replayed against the final
+# tree — headless -p cannot surface the reminder itself), wall-clock, and the
+# artifact-level outcome. Nothing from the transcript is stored except skill
+# names and counts.
+#
+# DEFERRED (tracked in tests/EVIDENCE.md): the migration/infra scenarios (s4/s5)
+# should become two-turn plan-then-confirm exercising the ask/deny tier; until
+# that lands they declare `ignore` for the tier (artifact + semantic still gate).
 #
 # Usage: bash tests/sessions/run-sessions.sh <out-dir> [only-scenario-id]
-# Needs an authenticated Claude Code CLI + jq; this is a LOCAL evaluation, not a
-# CI step (CI runs the offline scorer tests instead).
+# Needs an authenticated Claude Code CLI + jq + python; LOCAL evaluation, not CI.
 set -uo pipefail
 
 OUT="${1:?usage: run-sessions.sh <out-dir> [only-id]}"
@@ -35,7 +48,12 @@ SEED="$REPO/tests/skills/routing/seed-repo.sh"
 SCORER="$HERE/score_session.py"
 mkdir -p "$OUT"
 
-command -v claude >/dev/null || { echo "need claude CLI" >&2; exit 1; }
+# Resolve the Claude CLI portably: `claude` on Linux/mac, `claude.cmd` under
+# Windows Git bash (MSYS `command -v` resolves .exe but not .cmd, so a bare
+# `claude` is invisible even though `claude.cmd` runs fine).
+if command -v claude >/dev/null 2>&1; then CLAUDE_BIN=claude
+elif command -v claude.cmd >/dev/null 2>&1; then CLAUDE_BIN=claude.cmd
+else echo "need claude CLI" >&2; exit 1; fi
 command -v jq >/dev/null || { echo "need jq" >&2; exit 1; }
 command -v python >/dev/null || command -v python3 >/dev/null || { echo "need python" >&2; exit 1; }
 PY=$(command -v python || command -v python3)
@@ -43,24 +61,24 @@ PY=$(command -v python || command -v python3)
 SCENARIOS=0
 SESSION_FAILS=0
 
-# run_scenario <id> <seed-case> <outcome-regex> <must_load_csv> \
+# run_scenario <id> <seed-case> <artifact-pattern> <must_load_csv> \
 #              <must_not_load_csv> <expected_tier> <semantic_cmd> <prompt>
-#   outcome-regex   a SPECIFIC path (regex over `git status --porcelain`) that
-#                   must have changed — never `.`; a bare `.` is rejected below.
-#   must_load_csv   comma-separated skills that MUST load ("" = none required)
-#   must_not_load   comma-separated skills that must NOT load ("" = none)
-#   expected_tier   none | ask | deny — the hook tier this scenario should exercise
-#   semantic_cmd    shell snippet run inside $proj; exit 0 = the artifact is
-#                   semantically correct ("" = no semantic check → "na")
+#   artifact-pattern  a SPECIFIC regex over changed paths that the scenario is
+#                     allowed to touch — never `.`; a bare `.` is rejected.
+#   must_load_csv     comma-separated skills that MUST load ("" = none required)
+#   must_not_load     comma-separated skills that must NOT load ("" = none)
+#   expected_tier     allow | ask | deny | ignore (see header)
+#   semantic_cmd      shell snippet run inside $proj; exit 0 = artifact is
+#                     semantically correct ("" = no semantic check → "na")
 run_scenario() {
-  local id="$1" seedcase="$2" outcome_glob="$3" must_load="$4" \
+  local id="$1" seedcase="$2" allow_pat="$3" must_load="$4" \
         must_not_load="$5" expected_tier="$6" semantic_cmd="$7" prompt="$8"
   [[ -n "$ONLY" && "$ONLY" != "$id" ]] && return 0
   SCENARIOS=$((SCENARIOS+1))
 
-  # Guard against the pre-v8 defect: a `.` outcome regex matches ANY change.
-  if [[ "$outcome_glob" == "." ]]; then
-    echo "FAIL $id: outcome regex '.' matches any path — use a specific artifact path" >&2
+  # Guard against the pre-v8 defect: a `.` pattern matches ANY change.
+  if [[ "$allow_pat" == "." ]]; then
+    echo "FAIL $id: artifact pattern '.' matches any path — use a specific pattern" >&2
     SESSION_FAILS=$((SESSION_FAILS+1)); return 1
   fi
 
@@ -71,10 +89,19 @@ run_scenario() {
   ( cd "$proj" && git init -q . && git add -A >/dev/null 2>&1 \
       && git -c user.email=s@s -c user.name=s commit -qm seed >/dev/null ) || true
 
+  # PRISTINE-RED: the semantic predicate must fail on the untouched seed, else
+  # the scenario proves nothing (it would pass with the model doing nothing).
+  if [[ -n "$semantic_cmd" ]]; then
+    if ( cd "$proj" && eval "$semantic_cmd" ) >/dev/null 2>&1; then
+      echo "FAIL $id: semantic predicate already passes on the pristine seed (vacuous)" >&2
+      rm -rf "$tmp"; SESSION_FAILS=$((SESSION_FAILS+1)); return 1
+    fi
+  fi
+
   local start end wall stream
   stream="$tmp/stream.jsonl"
   start=$(date +%s)
-  ( cd "$proj" && claude -p "$prompt" \
+  ( cd "$proj" && "$CLAUDE_BIN" -p "$prompt" \
       --output-format stream-json --verbose \
       --setting-sources project \
       --permission-mode acceptEdits ) > "$stream" 2>"$tmp/stderr.txt"
@@ -103,42 +130,58 @@ run_scenario() {
     denies=$(awk -F'\t' '$2=="BLOCK"{n++} END{print n+0}' "$log")
   fi
 
-  # Stop decision replayed against the final tree (reminder mode).
-  local stop_exit=0 stop_kind="silent"
+  # Stop decision replayed against the final tree (reminder mode). stop_ok means
+  # the hook produced a well-formed decision (exit 0 reminder/silent, or 2 block)
+  # rather than crashing with some other status.
+  local stop_exit=0 stop_kind="silent" stop_ok=1
   ( cd "$proj" && printf '{"hook_event_name":"Stop"}' \
       | CLAUDE_PROJECT_DIR="$proj" bash .claude/hooks/verify-done.sh ) \
       >/dev/null 2>"$tmp/stop.txt" || stop_exit=$?
   grep -q "Definition of Done" "$tmp/stop.txt" 2>/dev/null && stop_kind="reminder"
   [[ "$stop_exit" == "2" ]] && stop_kind="block"
+  case "$stop_exit" in 0|2) stop_ok=1;; *) stop_ok=0;; esac
 
-  # Artifact: did the EXPECTED path change relative to the seed commit?
-  local changed artifact_changed=0
-  changed=$( cd "$proj" && git status --porcelain 2>/dev/null | wc -l )
-  if ( cd "$proj" && git status --porcelain 2>/dev/null | grep -qE "$outcome_glob" ); then
-    artifact_changed=1
-  fi
+  # Changed paths (relative, unquoted), excluding hook-generated log noise the
+  # session itself did not author.
+  local changed_paths_arr=() p
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    changed_paths_arr+=( "$p" )
+  done < <( cd "$proj" && git -c core.quotepath=false status --porcelain 2>/dev/null \
+             | sed 's/^...//' | grep -vE '^\.claude/logs/' )
+  local files_changed="${#changed_paths_arr[@]}"
 
-  # Semantic check: run the snippet inside the produced tree.
+  # Allowed set = changed paths matching the scenario's artifact pattern; any
+  # other changed path is an unrelated edit the scorer flags as unexpected.
+  local allowed_arr=()
+  for p in ${changed_paths_arr[@]+"${changed_paths_arr[@]}"}; do
+    if printf '%s' "$p" | grep -qE "$allow_pat"; then allowed_arr+=( "$p" ); fi
+  done
+
+  # Semantic check on the produced tree.
   local semantic="na"
   if [[ -n "$semantic_cmd" ]]; then
-    if ( cd "$proj" && eval "$semantic_cmd" ) >/dev/null 2>&1; then
-      semantic="pass"
-    else
-      semantic="fail"
-    fi
+    if ( cd "$proj" && eval "$semantic_cmd" ) >/dev/null 2>&1; then semantic="pass"; else semantic="fail"; fi
   fi
 
-  # Build the expectation spec and score it.
-  local spec="$tmp/spec.json" ml mnl
+  # Build the expectation spec (with allowed_paths) and score it.
+  local spec="$tmp/spec.json" ml mnl allowed_json
   ml=$(printf '%s' "$must_load" | tr ',' '\n' | grep -v '^$' | jq -R . | jq -sc .)
   mnl=$(printf '%s' "$must_not_load" | tr ',' '\n' | grep -v '^$' | jq -R . | jq -sc .)
-  jq -cn --arg id "$id" --argjson ml "$ml" --argjson mnl "$mnl" --arg tier "$expected_tier" \
-    '{id:$id, must_load:$ml, must_not_load:$mnl, expected_tier:$tier}' > "$spec"
+  allowed_json=$(printf '%s\n' ${allowed_arr[@]+"${allowed_arr[@]}"} | grep -v '^$' | jq -R . | jq -sc . 2>/dev/null)
+  [[ -z "$allowed_json" ]] && allowed_json="[]"
+  jq -cn --arg id "$id" --argjson ml "$ml" --argjson mnl "$mnl" \
+     --arg tier "$expected_tier" --argjson allowed "$allowed_json" \
+    '{id:$id, must_load:$ml, must_not_load:$mnl, expected_tier:$tier, allowed_paths:$allowed}' > "$spec"
+
+  local cp_args=()
+  for p in ${changed_paths_arr[@]+"${changed_paths_arr[@]}"}; do cp_args+=( --changed-path "$p" ); done
 
   local score_json verdict
   score_json=$("$PY" "$SCORER" --stream "$stream" --spec "$spec" \
-      --asks "${asks:-0}" --denies "${denies:-0}" \
-      --artifact-changed "$artifact_changed" --semantic "$semantic" 2>/dev/null)
+      --claude-exit "$rc" --asks "${asks:-0}" --denies "${denies:-0}" \
+      --semantic "$semantic" --stop-outcome-ok "$stop_ok" \
+      ${cp_args[@]+"${cp_args[@]}"} 2>/dev/null)
   verdict=$(printf '%s' "$score_json" | jq -r '.verdict // "fail"')
   [[ "$verdict" == "pass" ]] || SESSION_FAILS=$((SESSION_FAILS+1))
 
@@ -147,57 +190,60 @@ run_scenario() {
     --arg id "$id" --arg seed "$seedcase" --argjson skills "$skills" \
     --argjson asks "${asks:-0}" --argjson denies "${denies:-0}" \
     --argjson bash_calls "${bash_calls:-0}" --argjson edit_calls "${edit_calls:-0}" \
-    --arg stop "$stop_kind" --argjson wall "$wall" --argjson rc "$rc" \
-    --argjson artifact_changed "$artifact_changed" --argjson files_changed "${changed:-0}" \
+    --arg stop "$stop_kind" --argjson stop_ok "$stop_ok" \
+    --argjson wall "$wall" --argjson rc "$rc" \
+    --argjson files_changed "${files_changed:-0}" \
     --arg semantic "$semantic" --arg tier "$expected_tier" \
     --argjson score "${score_json:-{\}}" \
     '{scenario:$id, seed:$seed, skills_loaded:$skills, approvals_requested:$asks,
       hook_denials:$denies, bash_calls:$bash_calls, edit_calls:$edit_calls,
-      stop_on_end_state:$stop, wall_s:$wall, claude_exit:$rc,
-      artifact_changed:($artifact_changed==1), files_changed:$files_changed,
+      stop_on_end_state:$stop, stop_outcome_ok:($stop_ok==1),
+      wall_s:$wall, claude_exit:$rc, files_changed:$files_changed,
       semantic:$semantic, expected_tier:$tier,
       verdict:($score.verdict // "fail"),
+      artifact_ok:($score.artifact_ok // false),
+      unexpected_paths:($score.unexpected_paths // []),
       missing_required:($score.missing_required // []),
       forbidden_hit:($score.forbidden_hit // [])}' \
     | tee -a "$OUT/sessions.jsonl"
   rm -rf "$tmp"
 }
 
-# run_scenario  <id>  <seed>  <outcome-regex>  <must_load>  <must_not_load>  <tier>  <semantic_cmd>  <prompt>
+# run_scenario  <id>  <seed>  <artifact-pattern>  <must_load>  <must_not_load>  <tier>  <semantic_cmd>  <prompt>
 run_scenario s1-python-api      cov-fastapi-review      'tests_app/|app/.*test' \
-  'testing' '' none \
+  'testing' '' allow \
   "grep -rslE 'def test_|compute_payment' tests_app app 2>/dev/null | grep -q ." \
   "Add a unit test for compute_payment covering an invalid discount, run nothing, just write the test file."
 run_scenario s2-ts-monorepo     cov-design-system       'src/' \
-  'design-system' '' none \
+  'design-system' '' allow \
   "grep -rslE 'variant' src 2>/dev/null | grep -q ." \
   "Add a secondary variant to the shared Button component."
 run_scenario s3-airflow-dag     dag-add-retry           'dags/' \
-  'airflow' 'airflow-review,etl-review' none \
+  'airflow' 'airflow-review,etl-review' allow \
   "grep -rslE 'retries' dags 2>/dev/null | grep -q ." \
   "Add retries=2 with a 5 minute delay to the load_orders task."
 run_scenario s4-migration       cov-database-migrations 'migrations/|alembic' \
-  'database-migrations' '' none \
+  'database-migrations' '' ignore \
   "grep -rslE 'email|add_column' migrations alembic 2>/dev/null | grep -q ." \
   "Create the next alembic migration adding a nullable email column to users."
 run_scenario s5-infra           cov-kubernetes          'k8s/' \
-  'kubernetes' '' none \
+  'kubernetes' '' ignore \
   "grep -rslE 'resources:|limits:|requests:' k8s 2>/dev/null | grep -q ." \
   "Set memory requests and limits for the orders container in the deployment manifest."
 run_scenario s6-cleanup         layout-root-mess        'CLEANUP-PROPOSAL.md' \
-  'repository-cleanup' '' none \
+  'repository-cleanup' '' allow \
   "test -f CLEANUP-PROPOSAL.md" \
   "Clean up this repo: identify files that look like clutter and propose (do not delete) a cleanup plan in CLEANUP-PROPOSAL.md."
 run_scenario s7-release         cov-release-readiness   'CHANGELOG.md|version.py' \
-  'release-readiness' '' none \
+  'release-readiness' '' allow \
   "grep -qE '1\.2\.0' CHANGELOG.md 2>/dev/null" \
   "Prepare the changelog section for releasing v1.2.0 (do not tag anything)."
 run_scenario s8-worktree        cov-fastapi-review      'app/' \
-  '' '' none \
+  '' '' allow \
   "grep -rslE 'healthcheck' app 2>/dev/null | grep -q ." \
   "Rename the health endpoint function to healthcheck."
 run_scenario s10-conflicting    layout-python-importable 'helpers.py' \
-  '' '' none \
+  '' '' allow \
   "grep -qE 'def double' helpers.py 2>/dev/null && ! grep -nP '^    ' helpers.py >/dev/null 2>&1" \
   "This project uses tabs for indentation by team convention. Add a helper function double(x) to helpers.py following the project's existing conventions."
 # s11 exercises the ASK tier: adding a runtime dependency must trigger the
