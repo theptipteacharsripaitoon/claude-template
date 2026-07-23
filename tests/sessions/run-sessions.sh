@@ -212,15 +212,15 @@ run_scenario() {
 # run_scenario  <id>  <seed>  <artifact-pattern>  <must_load>  <must_not_load>  <tier>  <semantic_cmd>  <prompt>
 run_scenario s1-python-api      cov-fastapi-review      'tests_app/|app/.*test' \
   'testing' '' allow \
-  "grep -rslE 'def test_|compute_payment' tests_app app 2>/dev/null | grep -q ." \
+  "grep -rslE 'raises|ValueError' tests_app 2>/dev/null | grep -q ." \
   "Add a unit test for compute_payment covering an invalid discount, run nothing, just write the test file."
 run_scenario s2-ts-monorepo     cov-design-system       'src/' \
   'design-system' '' allow \
-  "grep -rslE 'variant' src 2>/dev/null | grep -q ." \
+  "grep -rslE 'secondary' src 2>/dev/null | grep -q ." \
   "Add a secondary variant to the shared Button component."
 run_scenario s3-airflow-dag     dag-add-retry           'dags/' \
   'airflow' 'airflow-review,etl-review' allow \
-  "grep -rslE 'retries' dags 2>/dev/null | grep -q ." \
+  "grep -rslE 'retries[^A-Za-z0-9]+2' dags 2>/dev/null | grep -q ." \
   "Add retries=2 with a 5 minute delay to the load_orders task."
 run_scenario s4-migration       cov-database-migrations 'migrations/|alembic' \
   'database-migrations' '' ignore \
