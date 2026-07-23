@@ -18,9 +18,10 @@
 
 export CLAUDE_HOOK_NAME="protect-files"
 source "$(dirname "$0")/lib.sh"
-require_jq
+require_jq_or_ask   # critical guardrail: ASK (not allow) if jq is unavailable
 
 INPUT=$(read_input)
+require_parseable_or_ask "$INPUT"   # ASK (not allow) on unparseable input
 # NotebookEdit sends notebook_path instead of file_path.
 FILE=$(json_get "$INPUT" '.tool_input.file_path // .tool_input.notebook_path')
 
@@ -183,7 +184,12 @@ has_segment ".claude" && has_segment "hooks" && ASK=true
 base_is "claude.md" && ASK=true
 { has_segment ".claude" && base_is "enforcement.md"; } && ASK=true
 { has_segment ".claude" && has_segment "skills"; } && ASK=true
-base_is "corpus.jsonl" "trigger-cases.yaml" "policy_consistency.py" && ASK=true
+base_is "corpus.jsonl" "trigger-cases.yaml" "policy_consistency.py" \
+        "policy_matrix.py" "check_coverage.py" && ASK=true
+# The canonical policy source of truth and any future sibling under policy/:
+# editing the action matrix rewrites the enforcement contract itself, so it gets
+# the same approval gate as the hooks it governs (review P1-2/P1-3).
+{ has_segment "policy" || base_is "action-matrix.yaml"; } && ASK=true
 
 if [[ "$ASK" == "true" ]]; then
   if check_override "protect-files"; then

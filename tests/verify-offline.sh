@@ -7,8 +7,11 @@
 # live model evaluations (skill routing, realistic sessions) are separate and
 # run out-of-band; their exact-SHA evidence lives under tests/*/results/.
 #
-# Requirements: bash, jq, git, python3 (+ pyyaml). ShellCheck is optional here
-# (a warning if absent); CI installs the pinned version and gates on it.
+# Requirements: bash, jq, git, node, python3. The one pip dependency (PyYAML) is
+# pinned in tests/requirements-verify.txt — install it with
+#   python -m pip install -r tests/requirements-verify.txt
+# ShellCheck is optional here (a warning if absent); CI installs the pinned
+# ShellCheck + the same PyYAML pin and gates on both.
 #
 # Usage: bash tests/verify-offline.sh
 set -uo pipefail
@@ -48,6 +51,7 @@ run "skill catalog consistency"    "$PY" tests/skills/check_catalog.py
 run "routing scorer + parser"      "$PY" tests/skills/routing/test_run_eval.py
 run "routing results consistency"  "$PY" tests/skills/routing/test_results_consistency.py
 run "session scorer unit tests"    "$PY" tests/sessions/test_score_session.py
+run "session driver<->scorer contract" "$PY" tests/sessions/test_driver_contract.py
 
 # --- Static integrity -------------------------------------------------------
 run "markdown link check"          "$PY" tests/check_links.py

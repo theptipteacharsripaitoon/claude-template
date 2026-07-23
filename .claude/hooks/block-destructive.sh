@@ -4,9 +4,10 @@
 
 export CLAUDE_HOOK_NAME="block-destructive"
 source "$(dirname "$0")/lib.sh"
-require_jq
+require_jq_or_ask   # critical guardrail: ASK (not allow) if jq is unavailable
 
 INPUT=$(read_input)
+require_parseable_or_ask "$INPUT"   # ASK (not allow) on unparseable input
 CMD=$(json_get "$INPUT" '.tool_input.command')
 
 if [[ -z "$CMD" ]]; then
@@ -186,20 +187,15 @@ DESTRUCTIVE_PATTERNS=(
 PM='(^|[[:space:];|&(])'
 
 ASK_PATTERNS=(
-  # -- add / install a new package --
-  # Options may come FIRST (npm install --save-dev lodash, npm i -D x,
-  # npm install -g tsc): skip any option words, then require a package name.
-  # A bare/options-only `npm install` (lockfile restore) still has no package
-  # token after the options, so it stays allowed. GLOBAL options may also come
-  # before the subcommand (`npm --prefix /tmp install lodash`), which bypassed
-  # this entirely before v7.
-  "npm([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*([[:space:]]+|=)[^-[:space:]]+)*[[:space:]]+(install|i)[[:space:]]+(-{1,2}[A-Za-z][A-Za-z-]*[[:space:]]+)*[@a-zA-Z]"
-  # Local-path installs (npm install ./pkg, ../pkg, /abs/pkg) mutate the
-  # manifest exactly like a registry install. The path must sit IMMEDIATELY
-  # after the subcommand: that keeps `npm install --prefix ./out` (bare
-  # restore redirected by an option value) allowed, per the v6 rows.
-  # `npm install -D ./pkg` (option before a local path) is a documented residual.
-  "npm[[:space:]]+(install|i)[[:space:]]+[\"']?\\.{0,2}/"
+  # -- npm install / npm i: EVERY form asks (v9 policy decision) --
+  # `npm ci` is the ONLY allowed npm restore (immutable — installs exactly the
+  # committed lockfile). Every `npm install` / `npm i` — bare, options-only,
+  # --prefix-redirected, local-path, or with a package — can re-resolve and
+  # REWRITE the lockfile, so all ask (review P1: the action matrix classified
+  # bare install as ask while the corpus allowed it; resolved toward ask). GLOBAL
+  # options before the subcommand (`npm --prefix /tmp install …`) are tolerated;
+  # `npm ci` and non-install subcommands (init/run/test) never match.
+  "npm([[:space:]]+-{1,2}[A-Za-z][A-Za-z0-9-]*([[:space:]]+|=)[^-[:space:]]+)*[[:space:]]+(install|i)([[:space:]]|$)"
   'yarn[[:space:]]+add[[:space:]]'
   'pnpm[[:space:]]+add[[:space:]]'
   'bun[[:space:]]+add[[:space:]]'                         # Bun (growing)
@@ -207,14 +203,11 @@ ASK_PATTERNS=(
   # pip option-first install into the user site (a new-package decision, not a
   # restore; -r/-e/-c restores don't carry --user in this template's flows).
   'pip3?[[:space:]]+install[[:space:]]+.*--user([[:space:]]|$)'
-  # Env-redirected installs (v6): a value-taking option (--prefix /tmp,
-  # --target /tmp) or --no-deps defeats the option-skip idioms above, but these
-  # commands still fetch and install NEW code — a supply-chain decision. A
-  # non-default --index-url is one too (dependency-confusion surface), even on
-  # a -r restore; that over-ask is deliberate and documented. npm --prefix asks
-  # only when a package token follows (a bare `npm install --prefix DIR`
-  # lockfile restore stays allowed).
-  "npm[[:space:]]+(install|i)[[:space:]]+.*--prefix([[:space:]]|=).*[[:space:]][@a-zA-Z]"
+  # Env-redirected pip installs still fetch and install NEW code even when an
+  # option consumes the package position (--target /tmp, --no-deps), and a
+  # non-default --index-url is a dependency-confusion surface even on a -r
+  # restore; that over-ask is deliberate and documented. (Any npm install form
+  # is already covered by the single npm rule above.)
   'pip3?[[:space:]]+install[[:space:]]+.*--target([[:space:]]|=|$)'
   'pip3?[[:space:]]+install[[:space:]]+.*--no-deps([[:space:]]|$)'
   'pip3?[[:space:]]+install[[:space:]]+.*--index-url([[:space:]]|=|$)'
