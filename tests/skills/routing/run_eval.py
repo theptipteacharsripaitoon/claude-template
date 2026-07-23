@@ -36,6 +36,16 @@ import tempfile
 
 import yaml
 
+# Force UTF-8 on our own stdout/stderr. A captured message may contain non-ASCII
+# (e.g. the CLI's "session limit · resets ..." middot), and printing it under a
+# non-UTF-8 console codepage — Windows cp874 (Thai) on this project's boxes —
+# otherwise raises UnicodeEncodeError and aborts the run mid-case (§19).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 HERE = pathlib.Path(__file__).resolve().parent
 FIXTURE = HERE.parent / "trigger-cases.yaml"
 RESULTS_DIR = HERE.parent / "results"
