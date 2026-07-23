@@ -114,6 +114,35 @@ def _descriptions_digest() -> str:
     return h.hexdigest()
 
 
+def _row_provenance(case: dict, prov: dict) -> dict:
+    """Immutable per-row provenance so every result row is independently
+    verifiable against the fixture it came from (review P1-6). The prompt and
+    expectation hashes pin WHAT was asked; the commit/digests/os/timestamp pin
+    the exact state it was asked against. A row can then be rejected on resume
+    or merge if any of these no longer match the current fixture."""
+    import hashlib
+
+    prompt_sha = hashlib.sha256(case["prompt"].encode("utf-8")).hexdigest()
+    expectation = json.dumps(
+        {
+            "must_load": sorted(case["must_load"]),
+            "must_not_load": sorted(case["must_not_load"]),
+            "allowed_companions": sorted(case["allowed_companions"]),
+        },
+        sort_keys=True,
+    )
+    expectation_sha = hashlib.sha256(expectation.encode("utf-8")).hexdigest()
+    return {
+        "prompt_sha256": prompt_sha,
+        "expectation_sha256": expectation_sha,
+        "repo_commit": prov["repo_commit"],
+        "fixture_digest": prov["fixture_digest"],
+        "descriptions_digest": prov["descriptions_digest"],
+        "os": prov["os"],
+        "generated_utc": prov["generated_utc"],
+    }
+
+
 def claude_version(claude: str) -> str | None:
     """Best-effort `claude --version` -> the version token, or None."""
     try:
@@ -379,11 +408,21 @@ def main() -> None:
     out_jsonl = RESULTS_DIR / f"routing-{stamp}.jsonl"
     out_summary = RESULTS_DIR / f"routing-{stamp}-summary.json"
 
+    # Provenance context, computed ONCE and stamped into every row + the summary.
+    prov = {
+        "repo_commit": _git_head(),
+        "fixture_digest": _sha256_file(FIXTURE),
+        "descriptions_digest": _descriptions_digest(),
+        "os": sys.platform,
+        "generated_utc": stamp,
+    }
+
     rows = []
     with open(out_jsonl, "w", encoding="utf-8") as fh:
         for case in cases:
             for run_no in range(1, args.runs + 1):
                 row = score(run_once(claude, bash, case, run_no))
+                row.update(_row_provenance(case, prov))
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()
@@ -413,11 +452,11 @@ def main() -> None:
         # description — a routing number without it cannot be attributed to a
         # listing state. Digests are over content, so an uncommitted edit still
         # changes them; repo_commit locates the baseline.
-        "repo_commit": _git_head(),
-        "os": sys.platform,
+        "repo_commit": prov["repo_commit"],
+        "os": prov["os"],
         "case_count": len(cases),
-        "fixture_digest": _sha256_file(FIXTURE),
-        "descriptions_digest": _descriptions_digest(),
+        "fixture_digest": prov["fixture_digest"],
+        "descriptions_digest": prov["descriptions_digest"],
         **summary,
     }
     with open(out_summary, "w", encoding="utf-8") as fh:

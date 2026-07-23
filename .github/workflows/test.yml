@@ -14,10 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  hooks-and-catalog:
-    # Pinned image, not floating -latest: tool versions change deliberately.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10 # bound the job (ci-review skill item 7)
+  offline:
+    name: offline (${{ matrix.os }})
+    strategy:
+      # Report every platform even if one fails, so a Windows-only portability
+      # issue never hides the Linux result (or vice versa).
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20 # bound the job (ci-review skill item 7); Windows Git Bash
+    # spawns ~600 subprocesses across the hook/corpus/installer suites and runs
+    # ~13 min, so give headroom over the observed time.
+    defaults:
+      run:
+        shell: bash # Git Bash on Windows — the supported Windows shell for this repo
     env:
       SHELLCHECK_VERSION: v0.10.0
       SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
@@ -26,7 +37,10 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
-      - name: Install pinned ShellCheck
+      - name: Install PyYAML
+        run: python -m pip install --quiet 'pyyaml==6.0.2'
+      - name: Install pinned ShellCheck (Linux gates on it; Windows skips it)
+        if: runner.os == 'Linux'
         # The runner image ships *some* ShellCheck; install the exact release
         # this repo is validated against, checksum-verified.
         run: |
@@ -36,41 +50,16 @@ jobs:
           tar -xJf /tmp/shellcheck.tar.xz -C /tmp
           sudo install "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version
-      - name: Hook regression suite
-        run: bash tests/hooks/run-tests.sh
-      - name: Hook installer end-to-end (embedded functional tests)
-        run: bash .claude/hooks/install.sh
-      - name: ShellCheck all hooks
-        # -x + -P so the shared lib.sh source is followed from the hooks dir
-        # (otherwise SC1091 "not following" trips the gate).
-        run: shellcheck -x -P .claude/hooks .claude/hooks/*.sh tests/hooks/run-tests.sh claude-init.sh tests/skills/routing/seed-repo.sh
-      - name: Skill catalog consistency
+      - name: Tool check
         run: |
-          python -m pip install --quiet 'pyyaml==6.0.2'
-          python tests/skills/check_catalog.py
-      - name: Offline routing tests (scoring math + stream-JSON parser fixtures)
-        run: python tests/skills/routing/test_run_eval.py
-      - name: Committed routing-results consistency
-        run: python tests/skills/routing/test_results_consistency.py
-      - name: Python compilation
-        run: python -m py_compile tests/skills/check_catalog.py tests/skills/routing/run_eval.py tests/skills/routing/test_run_eval.py tests/skills/routing/test_results_consistency.py tests/check_links.py
-      - name: Workflow + routing-fixture YAML validation
-        run: |
-          python - <<'EOF'
-          import io, yaml
-          for path in ('.github/workflows/test.yml', 'tests/skills/trigger-cases.yaml'):
-              yaml.safe_load(io.open(path, encoding='utf-8'))
-              print(path, 'parses')
-          EOF
-      - name: Generated-file cleanliness (no tracked bytecode/artifacts)
-        run: |
-          if git ls-files '*.pyc' | grep -q . || git ls-files | grep -qE '(^|/)__pycache__(/|$)'; then
-            echo "tracked generated files found"; exit 1
-          fi
-          echo "no tracked bytecode"
-      - name: Repo-wide Markdown link check
-        run: python tests/check_links.py
-      # The live skill-routing evaluation (tests/skills/routing/run_eval.py)
-      # needs an authenticated Claude Code session and real model calls, so it
-      # runs locally, not in CI; its committed results live in
-      # tests/skills/results/.
+          bash --version | head -1
+          git --version
+          jq --version
+          python --version
+      - name: Offline verification (single entrypoint — all suites)
+        run: bash tests/verify-offline.sh
+      # The live skill-routing and realistic-session evaluations need an
+      # authenticated Claude Code session and real model calls, so they run
+      # out-of-band, not in CI; their exact-SHA evidence lives under
+      # tests/skills/results/ and tests/sessions/results/. verify-offline.sh
+      # gates on the OFFLINE halves (scorers, parsers, results-consistency).
