@@ -228,6 +228,189 @@ ambiguous_observation:
     allowed_companions: [documentation, api-design]
     must_not_load: []
 
+# --- v9 coverage-floor expansion (review P1-6) --------------------------------
+# A SECOND positive paraphrase per skill plus hard negatives, so every skill
+# meets tests/skills/check_coverage.py's floor (>=2 pos, >=1 neg). Each case
+# REUSES an existing seed shape via `seed:` (no new seed-repo.sh entries); ids
+# are new so live results stay 1:1 with cases.
+coverage_floor:
+  - id: cf-agent-design
+    seed: cov-agent-design
+    prompt: "Design the tool interface and guardrails for our support-triage agent"
+    must_load: [agent-design]
+    must_not_load: [prompt-engineering]
+  - id: cf-prompt-engineering
+    seed: cov-agent-design
+    prompt: "The model keeps ignoring the format instructions in this system prompt - fix it"
+    must_load: [prompt-engineering]
+    must_not_load: [agent-design, llm-evaluation]
+  - id: cf-llm-evaluation
+    seed: cov-agent-design
+    prompt: "Build a golden set and judge whether the new prompt regressed"
+    must_load: [llm-evaluation]
+    must_not_load: [prompt-engineering]
+  - id: cf-api-design
+    seed: cov-fastapi-review
+    prompt: "Version this REST endpoint and plan the deprecation of the old field"
+    must_load: [api-design]
+    must_not_load: [api-review, documentation]
+  - id: cf-api-review
+    seed: review-api-breaking
+    prompt: "Does removing this response field break the contract for clients?"
+    must_load: [api-review]
+    must_not_load: [api-design]
+  - id: cf-config-management
+    seed: cov-fastapi-review
+    prompt: "Where should this per-environment setting live - env var or a config file?"
+    must_load: [config-management]
+    must_not_load: [security-review]
+  - id: cf-dependency-review
+    seed: cov-fastapi-review
+    prompt: "Audit requirements.txt for unused and duplicate packages"
+    must_load: [dependency-review]
+    must_not_load: [security-review]
+  - id: cf-documentation
+    seed: cov-fastapi-review
+    prompt: "Write the README setup section and a .env.example for this service"
+    must_load: [documentation]
+    must_not_load: [config-management]
+  - id: cf-python-review
+    seed: cov-fastapi-review
+    prompt: "Check this Python module for error-handling and resource-safety bugs before merge"
+    must_load: [python-review]
+    must_not_load: [python-refactor, dependency-review]
+  - id: cf-python-refactor
+    seed: cov-fastapi-review
+    prompt: "Extract this long function into a module without changing behavior"
+    must_load: [python-refactor]
+    must_not_load: [python-performance, python-review]
+  - id: cf-python-performance
+    seed: cov-fastapi-review
+    prompt: "This loader is too slow on big files - profile it and speed it up"
+    must_load: [python-performance]
+    must_not_load: [python-refactor]
+  - id: cf-testing
+    seed: cov-fastapi-review
+    prompt: "Add test coverage for this parser, including a property-based case"
+    must_load: [testing]
+    must_not_load: [verification]
+  - id: cf-verification
+    seed: cov-fastapi-review
+    prompt: "Which checks should I run to confirm this change did not break anything?"
+    must_load: [verification]
+    must_not_load: [testing]
+  - id: cf-observability
+    seed: cov-fastapi-review
+    prompt: "Add metrics and structured logging around the orders endpoint"
+    must_load: [observability]
+    must_not_load: []
+  - id: cf-fastapi-review
+    seed: cov-fastapi-review
+    prompt: "Review this FastAPI route and its Depends usage before we ship it"
+    must_load: [fastapi-review]
+    must_not_load: [api-design]
+  - id: cf-docker
+    seed: cov-docker
+    prompt: "This image is huge and runs as root - fix the Dockerfile"
+    must_load: [docker]
+    must_not_load: [docker-review]
+  - id: cf-docker-review
+    seed: cov-docker
+    prompt: "Review this Dockerfile change before we build and push it"
+    must_load: [docker-review]
+    must_not_load: [docker]
+  - id: cf-kubernetes
+    seed: cov-kubernetes
+    prompt: "Add resource limits and a liveness probe to this Deployment"
+    must_load: [kubernetes]
+    must_not_load: []
+  - id: cf-database-migrations
+    seed: cov-database-migrations
+    prompt: "Write a zero-downtime migration to add a nullable column"
+    must_load: [database-migrations]
+    must_not_load: [database-review]
+  - id: cf-database-review
+    seed: review-proc-deadlock
+    prompt: "Is this stored procedure safe under concurrency - check the transaction scope"
+    must_load: [database-review]
+    must_not_load: [ssis-review, database-migrations]
+  - id: cf-etl-review
+    seed: review-etl-counts
+    prompt: "The nightly load is dropping rows - reconcile source to target"
+    must_load: [etl-review]
+    must_not_load: [ssis-review]
+  - id: cf-ssis-review
+    seed: review-dtsx-thai
+    prompt: "Dates in the SSIS load are 543 years off - what is wrong?"
+    must_load: [ssis-review]
+    must_not_load: [etl-review]
+  - id: cf-airflow-review
+    seed: dag-add-retry
+    prompt: "Is this DAG change safe to deploy - check the schedule and backfill"
+    must_load: [airflow-review]
+    allowed_companions: [airflow]
+    must_not_load: [etl-review]
+  - id: cf-airflow-layout
+    seed: layout-dags-by-team
+    prompt: "What is the naming convention and folder for a new DAG here?"
+    must_load: [airflow-layout]
+    must_not_load: [airflow]
+  - id: cf-ci-review
+    seed: review-gha-change
+    prompt: "Review this workflow edit for security and pinned action versions"
+    must_load: [ci-review]
+    must_not_load: [release-readiness]
+  - id: cf-security-review
+    seed: secret-scan-repo
+    prompt: "Scan this repo for committed API keys and connection strings"
+    must_load: [security-review]
+    must_not_load: [config-management]
+  - id: cf-web-security
+    seed: login-session-cookies
+    prompt: "Harden this login - secure the session cookie and add CSRF protection"
+    must_load: [web-security]
+    must_not_load: [security-review]
+  - id: cf-design-system
+    seed: cov-design-system
+    prompt: "Should this new button be a variant or a separate shared component?"
+    must_load: [design-system]
+    must_not_load: [ui-review, frontend-layout]
+  - id: cf-ui-review
+    seed: cov-design-system
+    prompt: "Review this screen change for accessibility and responsive states"
+    must_load: [ui-review]
+    must_not_load: [design-system]
+  - id: cf-frontend-layout
+    seed: layout-frontend-components
+    prompt: "Where should this React hook and its store slice live?"
+    must_load: [frontend-layout]
+    must_not_load: [design-system, project-layout]
+  - id: cf-project-layout
+    seed: layout-root-mess
+    prompt: "Propose a standard top-level folder structure for this service"
+    must_load: [project-layout]
+    must_not_load: [python-layout, repository-cleanup]
+  - id: cf-python-layout
+    seed: layout-python-importable
+    prompt: "Turn these loose scripts into an installable package with entry points"
+    must_load: [python-layout]
+    must_not_load: [project-layout]
+  - id: cf-sql-layout
+    seed: layout-sql-proc-file
+    prompt: "How should we name and file these stored-procedure scripts?"
+    must_load: [sql-layout]
+    must_not_load: [database-review]
+  - id: cf-repository-cleanup
+    seed: cleanup-repo-recall
+    prompt: "Find unused files and declutter this repo for handover"
+    must_load: [repository-cleanup]
+    must_not_load: [project-layout]
+  - id: cf-release-readiness
+    seed: cov-release-readiness
+    prompt: "Run the pre-release checklist and prep the changelog for the tag"
+    must_load: [release-readiness]
+    must_not_load: [ci-review]
+
 evaluated_runs:
   - date: 2026-07-18
     cc_version: 2.1.214

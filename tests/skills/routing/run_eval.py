@@ -36,6 +36,16 @@ import tempfile
 
 import yaml
 
+# Force UTF-8 on our own stdout/stderr. A captured message may contain non-ASCII
+# (e.g. the CLI's "session limit · resets ..." middot), and printing it under a
+# non-UTF-8 console codepage — Windows cp874 (Thai) on this project's boxes —
+# otherwise raises UnicodeEncodeError and aborts the run mid-case (§19).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 HERE = pathlib.Path(__file__).resolve().parent
 FIXTURE = HERE.parent / "trigger-cases.yaml"
 RESULTS_DIR = HERE.parent / "results"
@@ -68,6 +78,10 @@ def load_cases() -> list[dict]:
                 {
                     "cluster": cluster,
                     "id": cid,
+                    # Which seed-repo.sh shape to build; defaults to the case id
+                    # (the historical 1:1 mapping). A case may set `seed:` to
+                    # REUSE an existing shape instead of defining a new one.
+                    "seed": case.get("seed") or cid,
                     "prompt": case["prompt"],
                     "must_load": case.get("must_load") or [],
                     "must_not_load": case.get("must_not_load") or [],
@@ -245,7 +259,7 @@ def run_once(claude: str, bash: str, case: dict, run_no: int) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"route-{case['id']}-") as tmp:
         seeded = pathlib.Path(tmp) / "repo"
         subprocess.run(
-            [bash, str(SEED), case["id"], str(seeded)],
+            [bash, str(SEED), case["seed"], str(seeded)],
             check=True,
             capture_output=True,
             timeout=120,

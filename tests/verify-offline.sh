@@ -48,6 +48,7 @@ run "action-matrix validator"      "$PY" tests/policy_matrix.py
 
 # --- Skills / routing / sessions (offline halves) ---------------------------
 run "skill catalog consistency"    "$PY" tests/skills/check_catalog.py
+run "routing coverage floor"       "$PY" tests/skills/check_coverage.py
 run "routing scorer + parser"      "$PY" tests/skills/routing/test_run_eval.py
 run "routing results consistency"  "$PY" tests/skills/routing/test_results_consistency.py
 run "session scorer unit tests"    "$PY" tests/sessions/test_score_session.py

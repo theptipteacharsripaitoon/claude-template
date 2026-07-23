@@ -6,8 +6,8 @@ must_load) and at least ONE hard negative (a case where it is in must_not_load,
 i.e. a prompt that plausibly looks like it but must NOT load it). Reports the
 gap per skill and exits non-zero until the floor is met.
 
-Offline; no model calls. NOT yet wired into verify-offline.sh — it fails until
-the fixture is expanded; wire it in once green.
+Offline; no model calls. Wired into verify-offline.sh (the fixture now meets the
+floor via the coverage_floor cluster in trigger-cases.yaml).
 """
 import io
 import pathlib
