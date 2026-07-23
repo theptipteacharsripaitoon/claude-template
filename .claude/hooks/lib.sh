@@ -143,3 +143,39 @@ json_get() {
   fi
   echo "$input" | jq -r "$field // empty" 2>/dev/null || true
 }
+
+# --- Fail-closed for CRITICAL guardrails (v9) --------------------------------
+# Advisory hooks fail OPEN (see log_fail_open) so a misconfigured host does not
+# break every tool call. The CRITICAL guardrails (block-destructive,
+# protect-files) guard against irreversible / secret-leaking actions, so when
+# THEY cannot inspect the operation they fail CLOSED — emit a permission ASK so a
+# human decides, instead of silently allowing. The ASK JSON is a fixed literal
+# printed with the printf builtin (no jq, no user data), so it is emitted even
+# when jq is the very dependency that is missing, and the payload can never
+# corrupt it or leak into it.
+emit_failclosed_ask() {
+  local reason="${1:-uninspectable}"
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Guardrail could not inspect this operation (jq missing or input not valid JSON); per CLAUDE.md §2 this critical hook fails closed. Approve only if you have verified the action is safe."}}'
+  # Best-effort audit; log_event no-ops safely when the log dir is unwritable.
+  log_event "ASK" "fail-closed" "$reason (payload withheld)"
+}
+
+# jq unavailable → a critical hook cannot parse its input at all: ASK, never
+# allow. (Advisory hooks call require_jq instead, which fails open.)
+require_jq_or_ask() {
+  if ! command -v jq >/dev/null 2>&1; then
+    emit_failclosed_ask "jq-missing"
+    exit 0
+  fi
+}
+
+# Malformed (unparseable) input to a critical hook → ASK, never allow. Call it
+# right after read_input, before extracting any field; jq is guaranteed present
+# here because require_jq_or_ask ran first.
+require_parseable_or_ask() {
+  local input="$1"
+  if [[ -n "$input" ]] && ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+    emit_failclosed_ask "malformed-input"
+    exit 0
+  fi
+}

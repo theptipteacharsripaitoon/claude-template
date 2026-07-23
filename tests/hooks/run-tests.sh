@@ -130,7 +130,7 @@ t_ask ASK16 block-destructive.sh "$(cmd 'gem uninstall rails')"
 t_ask ASK17 block-destructive.sh "$(cmd 'cargo remove serde')"
 echo "== block-destructive: lockfile/manifest RESTORE stays allowed (no ask) =="
 t_noask AL1 block-destructive.sh "$(cmd 'npm ci')"
-t_noask AL2 block-destructive.sh "$(cmd 'npm install')"
+t_ask   AL2 block-destructive.sh "$(cmd 'npm install')"   # v9: bare install can rewrite the lockfile → ask
 t_noask AL3 block-destructive.sh "$(cmd 'pnpm install')"
 t_noask AL4 block-destructive.sh "$(cmd 'yarn install')"
 t_noask AL5 block-destructive.sh "$(cmd 'pip install -r requirements.txt')"
@@ -163,6 +163,9 @@ t_ask PFPOL2 protect-files.sh "$(fp '/repo/.claude/ENFORCEMENT.md')"
 t_ask PFPOL3 protect-files.sh "$(fp '/repo/.claude/skills/docker/SKILL.md')"
 t_ask PFPOL4 protect-files.sh "$(fp '/repo/tests/hooks/corpus.jsonl')"
 t_ask PFPOL5 protect-files.sh "$(fp '/repo/tests/skills/trigger-cases.yaml')"
+t_ask PFPOL7 protect-files.sh "$(fp '/repo/policy/action-matrix.yaml')"
+t_ask PFPOL8 protect-files.sh "$(fp '/repo/tests/policy_matrix.py')"
+t_ask PFPOL9 protect-files.sh "$(fp '/repo/tests/skills/check_coverage.py')"
 t_noask PFPOL6 protect-files.sh "$(fp '/repo/docs/guide.md')"
 echo "== protect-files: symlink alias resolves, not bypasses (H4) =="
 # Skip where the platform has no real symlinks (Git Bash without
@@ -615,7 +618,7 @@ t_ask ASK18 block-destructive.sh "$(cmd 'npm install --save-dev lodash')"
 t_ask ASK19 block-destructive.sh "$(cmd 'npm i -D lodash')"
 t_ask ASK20 block-destructive.sh "$(cmd 'npm install -g typescript')"
 t_ask ASK21 block-destructive.sh "$(cmd 'pip install --user requests')"
-t_noask AL12 block-destructive.sh "$(cmd 'npm install --legacy-peer-deps')"
+t_ask   AL12 block-destructive.sh "$(cmd 'npm install --legacy-peer-deps')"   # v9: options-only install still re-resolves → ask
 
 echo "== block-destructive: git commit on a protected branch ASKs (CLAUDE.md §2) =="
 PBMAIN="$SCRATCH/pb-main"; mkdir -p "$PBMAIN"
@@ -754,7 +757,7 @@ t_ask ASK23 block-destructive.sh "$(cmd 'pip install --target /tmp requests')"
 t_ask ASK24 block-destructive.sh "$(cmd 'pip install --no-deps requests')"
 t_ask ASK25 block-destructive.sh "$(cmd 'pip install --index-url https://example.invalid/simple requests')"
 t_ask ASK26 block-destructive.sh "$(cmd 'npm install --workspace app lodash')"
-t_noask AL13 block-destructive.sh "$(cmd 'npm install --prefix /tmp')"   # restore into a prefix: no package token
+t_ask   AL13 block-destructive.sh "$(cmd 'npm install --prefix /tmp')"   # v9: any npm install form asks
 
 echo "== protect-files: v6 directory-segment case variants (same file on Windows/macOS) =="
 t PFD1 2 protect-files.sh "$(fp '/repo/.GIT/config')"
@@ -868,28 +871,32 @@ t_ask V702k block-destructive.sh "$(cmd 'npm install ./local-package')"
 t_ask V702l block-destructive.sh "$(cmd 'npm install ../shared/pkg')"
 # Restores are NOT a new supply-chain decision and must stay silent — including
 # a restore redirected by an option VALUE that happens to be a local path.
-t_noask V702m block-destructive.sh "$(cmd 'npm install --prefix ./out')"
-t_noask V702f block-destructive.sh "$(cmd 'npm ci')"
-t_noask V702g block-destructive.sh "$(cmd 'npm install')"
+t_ask   V702m block-destructive.sh "$(cmd 'npm install --prefix ./out')"   # v9: any npm install form asks
+t_noask V702f block-destructive.sh "$(cmd 'npm ci')"                       # npm ci = the only allowed npm restore
+t_ask   V702g block-destructive.sh "$(cmd 'npm install')"                  # v9: bare install can rewrite the lockfile → ask
 t_noask V702h block-destructive.sh "$(cmd 'pip install -r requirements.txt')"
 t_noask V702i block-destructive.sh "$(cmd 'pip install -q -r requirements.txt')"
 t_noask V702j block-destructive.sh "$(cmd 'uv sync')"
 
-echo "== v8 A4: malformed input fails OPEN but is now OBSERVABLE (logged) =="
-# A guardrail hook given unparseable input still allows (exit 0) — failing
-# closed would break every tool call on a misconfigured host — but the bypass
-# must be recorded so it is not silent. FO1: exit 0. FO2: a FAIL_OPEN row is
-# appended to hooks.log naming the hook, with NO payload/field value.
+echo "== v9 A4: CRITICAL hooks fail CLOSED (ask) when they cannot inspect input =="
+# block-destructive and protect-files are critical guardrails: given unparseable
+# input they must ASK (a static, dependency-free permission prompt), never
+# silently allow. Advisory hooks (scan-secrets, below) still fail OPEN. FC1/FC2:
+# exit 0 with a jq-valid ask. FC3: the fail-closed decision is logged and the
+# payload never leaks to stdout or the log.
 mkdir -p "$SCRATCH/logs"; : > "$SCRATCH/logs/hooks.log"
 mkdir -p "$SCRATCH/.claude/logs"; : > "$SCRATCH/.claude/logs/hooks.log"
-got=0; printf '%s' 'THIS IS NOT JSON' | bash "$HOOKS/block-destructive.sh" >/dev/null 2>&1 || got=$?
-if [[ "$got" == 0 ]]; then PASS=$((PASS+1)); printf 'PASS %-6s malformed input still fails open (exit 0)\n' FO1
-else FAIL=$((FAIL+1)); printf 'FAIL %-6s malformed input should fail open; got exit %s\n' FO1 "$got"; fi
-if grep -q 'FAIL_OPEN' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
-   && ! grep -qi 'THIS IS NOT JSON' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null; then
-  PASS=$((PASS+1)); printf 'PASS %-6s fail-open logged without leaking the payload\n' FO2
+t_ask FC1 block-destructive.sh 'THIS IS NOT JSON'
+t_ask FC2 protect-files.sh 'THIS IS NOT JSON'
+: > "$SCRATCH/.claude/logs/hooks.log"
+fcout=$(printf '%s' 'SENTINEL_NOT_JSON_zzz' | bash "$HOOKS/block-destructive.sh" 2>/dev/null)
+if printf '%s' "$fcout" | grep -q '"permissionDecision":"ask"' \
+   && grep -q 'fail-closed' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
+   && ! grep -q 'SENTINEL_NOT_JSON_zzz' "$SCRATCH/.claude/logs/hooks.log" 2>/dev/null \
+   && ! printf '%s' "$fcout" | grep -q 'SENTINEL_NOT_JSON_zzz'; then
+  PASS=$((PASS+1)); printf 'PASS %-6s fail-closed logged, payload not leaked\n' FC3
 else
-  FAIL=$((FAIL+1)); printf 'FAIL %-6s expected a FAIL_OPEN row and no payload in the log\n' FO2
+  FAIL=$((FAIL+1)); printf 'FAIL %-6s expected a fail-closed ask+log with no payload leak\n' FC3
 fi
 # FO3: valid JSON must NOT trigger a fail-open (the empty-object smoke input
 # used by install.sh must stay silent).

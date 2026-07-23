@@ -91,7 +91,7 @@
 {"id":"SQ-017","category":"sql","tool":"Bash","command":"sqlite3 app.db 'DELETE FROM users'","expected":"allow","ideal":"deny","oos":true,"note":"positional-SQL client; documented residual (hooks README)"}
 {"id":"SQ-018","category":"sql","tool":"Bash","command":"psql -f teardown.sql","expected":"allow","ideal":"deny","oos":true,"note":"file-carried SQL invisible to command regex"}
 {"id":"DP-001","category":"dependencies","tool":"Bash","command":"npm ci","expected":"allow","note":"lockfile restore"}
-{"id":"DP-002","category":"dependencies","tool":"Bash","command":"npm install","expected":"allow","note":"bare manifest restore"}
+{"id":"DP-002","category":"dependencies","tool":"Bash","command":"npm install","expected":"ask","note":"v9: bare install can rewrite the lockfile"}
 {"id":"DP-003","category":"dependencies","tool":"Bash","command":"npm install lodash","expected":"ask","note":"new package"}
 {"id":"DP-004","category":"dependencies","tool":"Bash","command":"npm install --save-dev lodash","expected":"ask","note":"dev dep"}
 {"id":"DP-005","category":"dependencies","tool":"Bash","command":"npm i -D lodash","expected":"ask","note":"short alias"}
@@ -100,7 +100,7 @@
 {"id":"DP-008","category":"dependencies","tool":"Bash","command":"npm --prefix /tmp install lodash","expected":"ask","note":"v7: option BEFORE subcommand"}
 {"id":"DP-009","category":"dependencies","tool":"Bash","command":"npm install ./local-package","expected":"ask","note":"v7: local-path package still mutates manifest"}
 {"id":"DP-010","category":"dependencies","tool":"Bash","command":"npm install https://example.invalid/pkg.tgz","expected":"ask","note":"URL package"}
-{"id":"DP-011","category":"dependencies","tool":"Bash","command":"npm install --legacy-peer-deps","expected":"allow","note":"options-only restore"}
+{"id":"DP-011","category":"dependencies","tool":"Bash","command":"npm install --legacy-peer-deps","expected":"ask","note":"v9: options-only install still re-resolves"}
 {"id":"DP-012","category":"dependencies","tool":"Bash","command":"npm uninstall lodash","expected":"ask","note":"remove"}
 {"id":"DP-013","category":"dependencies","tool":"Bash","command":"npm update","expected":"ask","note":"upgrade"}
 {"id":"DP-014","category":"dependencies","tool":"Bash","command":"pip install -r requirements.txt","expected":"allow","note":"manifest restore"}
@@ -156,6 +156,9 @@
 {"id":"PF-006","category":"protected-files","tool":"Write","file_path":"/repo/.claude/hooks/.env.example","expected":"ask","note":"v7: hooks dir wins over template basename"}
 {"id":"PF-007","category":"protected-files","tool":"Write","file_path":"/repo/.github/actions/example/.env.example","expected":"ask","note":"v7: CI actions subtree wins over template basename"}
 {"id":"PF-008","category":"protected-files","tool":"Write","file_path":"/repo/.github/workflows/.env.example","expected":"ask","note":"v7: workflows dir wins over template basename"}
+{"id":"PF-POL1","category":"protected-files","tool":"Write","file_path":"/repo/policy/action-matrix.yaml","expected":"ask","note":"v9: policy source of truth is gated"}
+{"id":"PF-POL2","category":"protected-files","tool":"Write","file_path":"/repo/tests/policy_matrix.py","expected":"ask","note":"v9: policy validator is gated"}
+{"id":"PF-POL3","category":"protected-files","tool":"Write","file_path":"/repo/tests/skills/check_coverage.py","expected":"ask","note":"v9: coverage-gate source is gated"}
 {"id":"PF-009","category":"protected-files","tool":"Write","file_path":"/repo/.env.example.secret","expected":"deny","note":"suffixed non-template"}
 {"id":"PF-010","category":"protected-files","tool":"Write","file_path":"/repo/src/main.py","expected":"allow","note":"ordinary source"}
 {"id":"PF-011","category":"protected-files","tool":"Write","file_path":"/repo/src/config.environment.ts","expected":"allow","note":"substring must not match"}
